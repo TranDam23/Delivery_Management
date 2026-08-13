@@ -1,0 +1,27 @@
+{
+  "name": "@delivery/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy.ts --network polygonAmoy",
+    "verify:amoy": "hardhat verify --network polygonAmoy",
+    "lint": "echo \"(no lint configured for contracts)\"",
+    "type-check": "tsc --noEmit",
+    "clean": "hardhat clean && rimraf dist"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.22.17",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  }
+}

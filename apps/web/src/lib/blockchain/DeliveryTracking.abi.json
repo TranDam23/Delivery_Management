@@ -1,0 +1,88 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [{ "name": "initialOwner", "type": "address" }],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "recordEvent",
+    "inputs": [
+      { "name": "trackingCode", "type": "string" },
+      { "name": "eventType", "type": "string" },
+      { "name": "performedBy", "type": "address" },
+      { "name": "eventDataHash", "type": "bytes32" }
+    ],
+    "outputs": [{ "name": "eventIndex", "type": "uint256" }],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getEvents",
+    "inputs": [{ "name": "trackingCode", "type": "string" }],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "components": [
+          { "name": "trackingCode", "type": "string" },
+          { "name": "eventType", "type": "string" },
+          { "name": "performedBy", "type": "address" },
+          { "name": "eventDataHash", "type": "bytes32" },
+          { "name": "timestamp", "type": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getEventCount",
+    "inputs": [{ "name": "trackingCode", "type": "string" }],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getLatestEvent",
+    "inputs": [{ "name": "trackingCode", "type": "string" }],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "components": [
+          { "name": "trackingCode", "type": "string" },
+          { "name": "eventType", "type": "string" },
+          { "name": "performedBy", "type": "address" },
+          { "name": "eventDataHash", "type": "bytes32" },
+          { "name": "timestamp", "type": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setOperator",
+    "inputs": [
+      { "name": "operator", "type": "address" },
+      { "name": "allowed", "type": "bool" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "DeliveryEventRecorded",
+    "inputs": [
+      { "name": "trackingCodeIndexed", "type": "string", "indexed": true },
+      { "name": "trackingCode", "type": "string", "indexed": false },
+      { "name": "eventType", "type": "string", "indexed": false },
+      { "name": "performedBy", "type": "address", "indexed": true },
+      { "name": "eventDataHash", "type": "bytes32", "indexed": false },
+      { "name": "timestamp", "type": "uint256", "indexed": false },
+      { "name": "eventIndex", "type": "uint256", "indexed": false }
+    ],
+    "anonymous": false
+  }
+]

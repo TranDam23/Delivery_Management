@@ -1,0 +1,16 @@
+Tên đề tài: Xây dựng hệ thống phần mềm quản lý và xác thực quy trình giao nhận hàng hóa ứng dụng Blockchain
+
+1. Mô tả:
+Sinh viên xây dựng hệ thống phần mềm cho phép người dùng tạo đơn giao hàng, nhập thông tin người gửi, người nhận, địa chỉ, loại hàng, phí giao hàng và trạng thái xử lý. Nhân viên giao hàng sử dụng app điện thoại để quét mã QR khi nhận hàng, cập nhật trạng thái vận chuyển và xác nhận giao hàng. Dữ liệu chi tiết được lưu trong cơ sở dữ liệu, còn Blockchain ghi nhận mã đơn hàng, thời gian cập nhật, người thực hiện, trạng thái giao nhận và mã băm dữ liệu. Người gửi và người nhận có thể tra cứu hành trình đơn hàng, kiểm tra lịch sử cập nhật và xác minh trạng thái giao hàng. Hệ thống cũng hỗ trợ thống kê số lượng đơn, tỷ lệ giao thành công, đơn hoàn, đơn trễ hạn và cảnh báo khi trạng thái giao hàng bất thường.
+
+2. Dự kiến sản phẩm nghiên cứu của Đề tài và khả năng ứng dụng:
+Sản phẩm gồm website, app điện thoại quản lý đơn giao nhận, cơ sở dữ liệu lưu thông tin đơn hàng, người gửi, người nhận, nhân viên giao hàng, trạng thái vận chuyển và smart contract ghi nhận các sự kiện quan trọng lên Blockchain. Hệ thống có chức năng tạo mã QR cho từng đơn hàng, quét mã khi nhận/giao hàng và hiển thị lịch sử vận chuyển. Đề tài có thể ứng dụng cho cửa hàng online, đơn vị giao hàng nội bộ, hợp tác xã, doanh nghiệp nhỏ, siêu thị mini hoặc các cơ sở cần quản lý giao nhận minh bạch.
+
+3. Mục tiêu cần đạt được:
+Đề tài nhằm xây dựng hệ thống phần mềm hỗ trợ quản lý quá trình giao nhận hàng hóa từ người gửi, đơn vị vận chuyển đến người nhận. Mỗi đơn hàng được cấp mã định danh và mã QR để theo dõi trạng thái giao hàng. Blockchain được sử dụng để ghi nhận các mốc quan trọng như tạo đơn, nhận hàng, chuyển kho, đang giao, giao thành công, hoàn hàng hoặc hủy đơn nhằm tăng tính minh bạch, hạn chế chỉnh sửa trạng thái sai lệch và hỗ trợ xử lý tranh chấp khi có sự cố.
+
+4. Yêu cầu đầu vào:
+Sinh viên cần có kiến thức về lập trình web hoặc mobile, cơ sở dữ liệu, API, QR Code, phân quyền người dùng và Blockchain cơ bản. Có thể sử dụng Flutter hoặc Android cho app điện thoại, ReactJS hoặc VueJS cho giao diện web, Node.js/Spring Boot/ASP.NET Core cho backend, MySQL/PostgreSQL/MongoDB cho cơ sở dữ liệu, Solidity hoặc Hyperledger Fabric cho Blockchain. Sinh viên cần hiểu cách thiết kế smart contract, cách ghi nhận sự kiện giao nhận lên Blockchain và cách kết hợp Blockchain với cơ sở dữ liệu truyền thống.
+
+5. Chuẩn đầu ra:
+Hoàn thành hệ thống phần mềm quản lý và xác thực quy trình giao nhận hàng hóa, có chức năng tạo đơn hàng, quản lý người gửi, người nhận, nhân viên giao hàng, cập nhật trạng thái vận chuyển, quét QR Code khi nhận/giao hàng, tra cứu lịch sử giao nhận và thống kê kết quả vận chuyển. Hệ thống lưu dữ liệu vào cơ sở dữ liệu, ghi nhận các mốc giao nhận quan trọng lên Blockchain, có chức năng tìm kiếm, cảnh báo trạng thái bất thường và báo cáo tình hình giao hàng.

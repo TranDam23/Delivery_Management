@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Delivery Management",
+    "slug": "delivery-management-mobile",
+    "scheme": "deliverymanagement",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.deliverymanagement.mobile"
+    },
+    "android": {
+      "package": "com.deliverymanagement.mobile",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phep ung dung dung camera de quet ma QR don hang."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
