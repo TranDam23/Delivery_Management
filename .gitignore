@@ -11,6 +11,9 @@ artifacts/
 cache/
 typechain-types/
 
+# TypeScript build cache (gay xung dot merge neu commit)
+*.tsbuildinfo
+
 # Turborepo
 .turbo/
 
