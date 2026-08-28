@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "He thong quan ly giao nhan hang hoa | Blockchain",
+  title: "DeliverTrust | Đăng nhập",
   description:
     "He thong quan ly va xac thuc quy trinh giao nhan hang hoa ung dung Blockchain",
 };
