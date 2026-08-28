@@ -1,4 +1,4 @@
-import type { BlockchainEventType } from "../enums";
+import type { BlockchainEventType, BlockchainTransactionStatus } from "../enums";
 
 export interface BlockchainEvent {
   id: string;
@@ -8,6 +8,9 @@ export interface BlockchainEvent {
   previous_hash: string | null;
   transaction_hash: string | null;
   block_number: number | null;
+  performed_by: string | null;
+  chain_timestamp: string | null;
+  tx_status: BlockchainTransactionStatus;
   created_at: string;
 }
 

@@ -22,6 +22,7 @@ export interface Order {
   created_by: string;
   created_at: string;
   updated_at: string;
+  expected_delivery_date: string | null;
   cancel_reason: string | null;
 }
 
