@@ -2,6 +2,11 @@ import { ethers } from "hardhat";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
+  if (!deployer) {
+    throw new Error(
+      "Khong tim thay signer nao. Kiem tra BLOCKCHAIN_PRIVATE_KEY trong packages/contracts/.env",
+    );
+  }
   console.log("Deploying DeliveryTracking with account:", deployer.address);
 
   const DeliveryTracking = await ethers.getContractFactory("DeliveryTracking");

@@ -5,6 +5,9 @@ import type { DeliveryTracking } from "../typechain-types";
 describe("DeliveryTracking", () => {
   async function deployFixture() {
     const [owner, operator, staff, stranger] = await ethers.getSigners();
+    if (!owner || !operator || !staff || !stranger) {
+      throw new Error("Hardhat network phai cung cap it nhat 4 signer");
+    }
     const Factory = await ethers.getContractFactory("DeliveryTracking");
     const contract = (await Factory.deploy(owner.address)) as unknown as DeliveryTracking;
     await contract.waitForDeployment();

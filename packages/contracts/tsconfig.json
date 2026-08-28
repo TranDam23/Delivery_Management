@@ -1,10 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    // Node16 thay cho "Node" cu: can thiet de doc duoc "exports" map cua
+    // ethers v6, neu khong TS bao "Cannot find module 'ethers'" va keo theo
+    // toan bo type augmentation cua Hardhat bi hong.
+    "module": "Node16",
+    "moduleResolution": "Node16",
     "resolveJsonModule": true,
+    "types": ["node", "mocha"],
     "outDir": "dist"
   },
-  "include": ["scripts", "test", "hardhat.config.ts", "typechain-types"]
+  // typechain-types la code sinh tu dong (da nam trong .gitignore), khong
+  // type-check truc tiep; van duoc TS doc qua augmentation khi can.
+  "include": ["scripts", "test", "hardhat.config.ts"]
 }

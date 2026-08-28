@@ -1,5 +1,6 @@
 export * from "./enums";
 export * from "./types/role";
+export * from "./types/auth";
 export * from "./types/user";
 export * from "./types/contact";
 export * from "./types/order";

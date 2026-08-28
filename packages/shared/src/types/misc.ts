@@ -1,4 +1,18 @@
-import type { NotificationType } from "../enums";
+import type { AlertStatus, NotificationType } from "../enums";
+
+export interface Alert {
+  id: string;
+  order_id: string | null;
+  alert_type: string;
+  title: string;
+  message: string;
+  details: Record<string, unknown> | null;
+  detected_at: string;
+  status: AlertStatus;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+}
 
 export interface Notification {
   id: string;

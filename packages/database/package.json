@@ -14,7 +14,7 @@
     "supabase:push": "supabase db push",
     "supabase:reset": "supabase db reset",
     "supabase:gen-types": "supabase gen types typescript --linked > src/database.types.ts",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist"
   },
@@ -23,8 +23,11 @@
     "@supabase/supabase-js": "^2.47.10"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "rimraf": "^6.0.1",
     "supabase": "^2.2.1",
     "typescript": "^5.7.3",
-    "rimraf": "^6.0.1"
+    "typescript-eslint": "^8.68.0"
   }
 }

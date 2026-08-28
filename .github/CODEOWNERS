@@ -1,0 +1,20 @@
+# Tu dong gan nguoi review theo vung so huu. Xem docs/PHOI-HOP.md de biet
+# ranh gioi day du giua hai thanh vien.
+
+# --- Mac dinh: ca hai cung xem ---
+*                                       @TranDam23
+
+# --- Nguoi gui/nhan, Hang hoa, Giao nhan, Tracking, COD, Blockchain, Thong bao ---
+/packages/contracts/                    @TranDam23
+/packages/shared/src/enums.ts           @TranDam23
+/apps/mobile/                           @TranDam23
+/apps/web/src/lib/blockchain/           @TranDam23
+
+# --- Tai khoan, Don hang, Dashboard, Admin ---
+/apps/web/src/app/api/auth/             @Hien-code
+/apps/web/src/lib/auth.ts               @Hien-code
+
+# --- Vung chung: doi phai co ca hai duyet ---
+/packages/database/supabase/migrations/ @TranDam23 @Hien-code
+/packages/shared/src/types/             @TranDam23 @Hien-code
+/.github/                               @TranDam23 @Hien-code

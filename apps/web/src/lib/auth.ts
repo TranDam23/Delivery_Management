@@ -1,11 +1,11 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
+import type { AuthTokenPayload } from "@delivery/shared";
 
-export interface AuthTokenPayload {
-  userId: string;
-  roleCode: string;
-}
+// Dinh nghia goc nam o packages/shared de mobile dung chung. Re-export cho
+// code cu trong apps/web van import tu day duoc.
+export type { AuthTokenPayload };
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;

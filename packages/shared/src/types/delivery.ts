@@ -14,6 +14,7 @@ export interface DeliveryEvent {
   id: string;
   delivery_id: string;
   order_id: string;
+  from_status_id: string | null;
   status_id: string;
   performed_by: string;
   event_time: string;
