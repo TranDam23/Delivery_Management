@@ -290,6 +290,7 @@ export type Database = {
         Row: {
           created_at: string
           default_address_id: string | null
+          email: string | null
           id: string
           name: string
           phone: string
@@ -300,6 +301,7 @@ export type Database = {
         Insert: {
           created_at?: string
           default_address_id?: string | null
+          email?: string | null
           id?: string
           name: string
           phone: string
@@ -310,6 +312,7 @@ export type Database = {
         Update: {
           created_at?: string
           default_address_id?: string | null
+          email?: string | null
           id?: string
           name?: string
           phone?: string
@@ -900,7 +903,7 @@ export type Database = {
     }
     Enums: {
       cod_transaction_status: "pending" | "collected" | "reconciled"
-      contact_type: "sender" | "receiver"
+      contact_type: "sender" | "receiver" | "both"
       delivery_attempt_result: "success" | "failed"
       user_status: "active" | "inactive" | "suspended"
     }
@@ -1031,7 +1034,7 @@ export const Constants = {
   public: {
     Enums: {
       cod_transaction_status: ["pending", "collected", "reconciled"],
-      contact_type: ["sender", "receiver"],
+      contact_type: ["sender", "receiver", "both"],
       delivery_attempt_result: ["success", "failed"],
       user_status: ["active", "inactive", "suspended"],
     },

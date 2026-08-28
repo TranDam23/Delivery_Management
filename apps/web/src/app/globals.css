@@ -2,19 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Token mau lay tu DEFAULT_STYLE trong "DeliverTrust UI Generator/code.ts"
+ * (gia tri RGB 0..1 cua Figma doi sang hex). Giao dien chi co mot che do toi,
+ * dung nhu ban thiet ke — khong lam bien the sang.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --dt-bg: #0c0d11;
+  --dt-side: #1a1b21;
+  --dt-panel: #1b1b1a;
+  --dt-panel-2: #212125;
+  --dt-border: #3b3b3e;
+  --dt-yellow: #dfb329;
+  --dt-text: #f1f1f4;
+  --dt-muted: #91939c;
+  --dt-green: #3bb363;
+  --dt-red: #cc3638;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  background: var(--dt-bg);
+  color: var(--dt-text);
+  font-family: Inter, ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+/* O nhap tren nen toi: bo nen vang tu dong dien cua trinh duyet. */
+input:-webkit-autofill,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--dt-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--dt-panel-2) inset;
 }
