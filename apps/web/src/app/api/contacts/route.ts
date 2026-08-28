@@ -1,9 +1,13 @@
 import type { NextRequest } from "next/server";
-import { ContactType, RoleCode } from "@delivery/shared";
+import {
+  ContactType,
+  RoleCode,
+  createContactSchema,
+  listContactsQuerySchema,
+} from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
-import { createContactSchema, listContactsQuerySchema } from "@/lib/validation/contact";
 
 /**
  * Lien he kem dia chi mac dinh. Phai chi ro ten khoa ngoai:

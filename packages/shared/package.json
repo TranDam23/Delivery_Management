@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
   "scripts": {
     "lint": "eslint src",
     "type-check": "tsc --noEmit",

@@ -8,3 +8,4 @@ export * from "./types/delivery";
 export * from "./types/cod";
 export * from "./types/blockchain";
 export * from "./types/misc";
+export * from "./validation/contact";

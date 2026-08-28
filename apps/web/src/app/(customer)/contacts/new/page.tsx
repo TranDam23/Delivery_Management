@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CONTACT_TYPE_LABEL, ContactType, type Contact } from "@delivery/shared";
+import {
+  CONTACT_TYPE_LABEL,
+  ContactType,
+  createContactSchema,
+  type Contact,
+} from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { SelectField, TextField } from "@/components/ui/field";
 import { apiFetch } from "@/lib/api-client";
-import { createContactSchema } from "@/lib/validation/contact";
 
 type FieldErrors = Partial<Record<"name" | "phone" | "email" | "type", string>>;
 

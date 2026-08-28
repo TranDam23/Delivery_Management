@@ -1,10 +1,13 @@
 import { z } from "zod";
-import { ContactType } from "@delivery/shared";
+import { ContactType } from "../enums";
 
 /**
- * Chuan hoa so dien thoai truoc khi luu. Bat buoc, khong phai tien ich:
- * unique index (user_id, phone) chi chan duoc trung khi moi noi deu ghi cung
- * mot dang chuoi — "0908 123 456", "+84908123456" va "0908123456" la mot nguoi.
+ * Chuan hoa so dien thoai truoc khi luu.
+ *
+ * De o packages/shared chu khong o rieng apps/web vi day la dieu kien de
+ * unique index (user_id, phone) hoat dong: web va app phai ghi cung mot dang
+ * chuoi, neu khong "0908 123 456", "+84908123456" va "0908123456" se thanh ba
+ * lien he khac nhau cua cung mot nguoi.
  */
 export function normalizePhone(raw: string): string {
   const digitsOnly = raw.replace(/[\s.\-()]/g, "");
@@ -13,7 +16,7 @@ export function normalizePhone(raw: string): string {
   return digitsOnly;
 }
 
-const phoneSchema = z
+export const contactPhoneSchema = z
   .string()
   .min(1, "Số điện thoại là bắt buộc")
   .transform(normalizePhone)
@@ -30,7 +33,7 @@ const optionalEmailSchema = z
 export const createContactSchema = z.object({
   type: z.nativeEnum(ContactType),
   name: z.string().trim().min(2, "Họ tên phải có ít nhất 2 ký tự").max(120),
-  phone: phoneSchema,
+  phone: contactPhoneSchema,
   email: optionalEmailSchema,
 });
 
@@ -46,3 +49,4 @@ export const listContactsQuerySchema = z.object({
 
 export type CreateContactBody = z.infer<typeof createContactSchema>;
 export type UpdateContactBody = z.infer<typeof updateContactSchema>;
+export type ListContactsQuery = z.infer<typeof listContactsQuerySchema>;
