@@ -5,13 +5,16 @@
   "type": "commonjs",
   "scripts": {
     "compile": "hardhat compile",
+    "build": "hardhat compile",
     "test": "hardhat test",
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy.ts --network polygonAmoy",
+    "spike:local": "hardhat run scripts/spike-record-event.ts --network localhost",
+    "spike:amoy": "hardhat run scripts/spike-record-event.ts --network polygonAmoy",
     "verify:amoy": "hardhat verify --network polygonAmoy",
     "lint": "echo \"(no lint configured for contracts)\"",
-    "type-check": "tsc --noEmit",
+    "type-check": "hardhat compile && tsc --noEmit",
     "clean": "hardhat clean && rimraf dist"
   },
   "dependencies": {
@@ -19,7 +22,10 @@
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.20.1",
     "dotenv": "^16.4.7",
+    "ethers": "^6.17.0",
     "hardhat": "^2.22.17",
     "rimraf": "^6.0.1",
     "typescript": "^5.7.3"
