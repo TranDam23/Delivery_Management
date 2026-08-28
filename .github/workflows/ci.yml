@@ -24,14 +24,15 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
       JWT_SECRET: ci-placeholder-jwt-secret
       NEXT_PUBLIC_DELIVERY_CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000000"
-      POLYGON_AMOY_RPC_URL: https://rpc-amoy.polygon.technology
+      POLYGON_AMOY_RPC_URL: https://polygon-amoy-bor-rpc.publicnode.com
 
     steps:
       - uses: actions/checkout@v4
 
+      # Khong khai bao version o day: root package.json da co truong
+      # "packageManager": "pnpm@11.20.0". Khai bao ca hai thi action bao loi
+      # "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
