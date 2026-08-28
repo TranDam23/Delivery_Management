@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Huy cac lan chay cu khi push lien tiep vao cung mot nhanh.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Kiem tra toan monorepo
+    runs-on: ubuntu-latest
+
+    # Gia tri gia, chi de Next.js build duoc. KHONG phai secret that:
+    # CI khong ket noi toi Supabase hay Polygon, chi compile va chay unit test.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
+      JWT_SECRET: ci-placeholder-jwt-secret
+      NEXT_PUBLIC_DELIVERY_CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000000"
+      POLYGON_AMOY_RPC_URL: https://rpc-amoy.polygon.technology
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cai dependency
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test (smart contract)
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

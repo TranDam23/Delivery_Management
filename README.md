@@ -28,6 +28,15 @@ Delivery_Management/
 - **QR Code**: `qrcode` (sinh QR o backend), `expo-camera` (quet QR tren mobile)
 - **Monorepo**: pnpm workspaces + Turborepo
 
+## Yeu cau moi truong
+
+| Cong cu | Phien ban | Ghi chu |
+|---|---|---|
+| Node.js | >= 20 (dang dung 22) | |
+| pnpm | 11.x | `npm i -g pnpm` |
+| Supabase CLI | >= 2.x | da co san trong `packages/database` |
+| MetaMask | | de tao vi testnet, chi can khi lam Blockchain |
+
 ## Bat dau
 
 ### 1. Cai dependencies
@@ -38,7 +47,15 @@ pnpm install
 
 ### 2. Cau hinh bien moi truong
 
-Copy `.env.example` thanh `.env` trong `apps/web`, `apps/mobile`, `packages/contracts` roi dien gia tri (xem chi tiet trong `.env.example` o moi thu muc).
+Copy `.env.example` thanh `.env` trong `apps/web`, `apps/mobile`,
+`packages/contracts` va `packages/database`, roi dien gia tri.
+
+File `.env` o thu muc goc chi de **tra cuu** — no liet ke moi bien dung trong
+monorepo kem giai thich, khong duoc code doc truc tiep.
+
+Luu y ve `BLOCKCHAIN_PRIVATE_KEY`: dung mot vi MetaMask tao rieng cho do an,
+**khong dung vi ca nhan co tien that**. `apps/web` yeu cau key co tien to `0x`
+(`packages/contracts` tu chuan hoa nen dang nao cung chay).
 
 ### 3. Database (Supabase)
 
@@ -46,26 +63,61 @@ Copy `.env.example` thanh `.env` trong `apps/web`, `apps/mobile`, `packages/cont
 cd packages/database
 supabase login
 supabase link --project-ref <your-project-ref>
-pnpm supabase:push       # ap dung migration trong supabase/migrations
+pnpm supabase:push
 ```
+
+Sau moi lan doi schema, chay lai `pnpm db:gen-types` o thu muc goc de sinh lai
+`packages/database/src/database.types.ts`.
 
 ### 4. Smart contract
 
+Chay local truoc — khong can vi, khong can internet, va day cung la phuong an
+du phong khi mang Amoy co su co:
+
 ```bash
-cd packages/contracts
-pnpm compile
-pnpm deploy:amoy          # deploy len Polygon Amoy testnet
+pnpm --filter @delivery/contracts test
+pnpm --filter @delivery/contracts node
+pnpm --filter @delivery/contracts deploy:local
+pnpm --filter @delivery/contracts spike:local
 ```
 
-Sau khi deploy, copy dia chi contract vao `NEXT_PUBLIC_DELIVERY_CONTRACT_ADDRESS` trong `apps/web/.env`.
+Khi da co POL tren Amoy:
+
+```bash
+pnpm --filter @delivery/contracts deploy:amoy
+pnpm --filter @delivery/contracts spike:amoy
+```
+
+Sau khi deploy, copy dia chi contract vao `NEXT_PUBLIC_DELIVERY_CONTRACT_ADDRESS`
+trong `apps/web/.env`.
 
 ### 5. Chay du an
 
 ```bash
-pnpm dev             # chay tat ca (web + mobile) qua turborepo
-pnpm dev:web          # chi chay Next.js (http://localhost:3000)
-pnpm dev:mobile        # chi chay Expo (quet QR bang Expo Go)
+pnpm dev
+pnpm dev:web
+pnpm dev:mobile
 ```
+
+## Kiem tra truoc khi mo PR
+
+Bon lenh nay chinh la nhung gi CI chay. Chay het truoc khi push de khong phai
+doi CI bao do:
+
+```bash
+pnpm type-check
+pnpm lint
+pnpm test
+pnpm build
+```
+
+## Lam viec nhom
+
+Du an do 2 nguoi thuc hien. Ranh gioi so huu tung thu muc, nam diem giao giua
+hai phan viec, quy trinh Git va quy tac doi schema nam o
+[`docs/PHOI-HOP.md`](docs/PHOI-HOP.md).
+
+Doc file do **truoc khi bat dau GD 2 (Giao nhan)**.
 
 ## So do CSDL
 
