@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { RoleCode } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
@@ -14,6 +15,9 @@ const assignSchema = z.object({
 export async function POST(request: NextRequest) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (auth.roleCode !== RoleCode.ADMIN && auth.roleCode !== RoleCode.DISPATCHER) {
+    return fail("Forbidden", 403);
+  }
 
   const parsed = assignSchema.safeParse(await request.json());
   if (!parsed.success) return fail(parsed.error.message);

@@ -10,10 +10,10 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   phone: z.string().optional(),
-  roleCode: z.enum([RoleCode.SENDER, RoleCode.RECEIVER]).default(RoleCode.SENDER),
+  roleCode: z.enum([RoleCode.CUSTOMER]).default(RoleCode.CUSTOMER),
 });
 
-/** Dang ky tai khoan cho nguoi gui/nguoi nhan. Nhan vien/dieu phoi/admin do ADMIN tao. */
+/** Dang ky tai khoan khach hang. Nhan vien/dieu phoi/admin do ADMIN tao. */
 export async function POST(request: NextRequest) {
   const parsed = registerSchema.safeParse(await request.json());
   if (!parsed.success) return fail(parsed.error.message);
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   const { data: role, error: roleError } = await supabase
     .from("roles")
     .select("id")
-    .eq("code", parsed.data.roleCode)
+    .eq("code", RoleCode.CUSTOMER)
     .single();
   if (roleError || !role) return fail("Role khong ton tai", 500);
 
@@ -43,6 +43,6 @@ export async function POST(request: NextRequest) {
 
   if (error) return fail(error.message, 409);
 
-  const token = signAuthToken({ userId: user.id, roleCode: parsed.data.roleCode });
+  const token = signAuthToken({ userId: user.id, roleCode: RoleCode.CUSTOMER });
   return ok({ token, user }, 201);
 }

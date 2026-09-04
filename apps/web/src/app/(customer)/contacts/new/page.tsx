@@ -21,7 +21,7 @@ const INITIAL_FORM = {
   name: "",
   phone: "",
   email: "",
-  type: ContactType.SENDER as ContactType,
+  type: ContactType.BOTH as ContactType,
 };
 
 export default function NewContactPage(): React.JSX.Element {

@@ -7,7 +7,7 @@ export default function DispatcherDashboardPage(): React.JSX.Element {
       roleCode={RoleCode.DISPATCHER}
       heading="Bảng điều khiển điều phối"
       subtitle="Theo dõi và điều phối các đơn giao nhận."
-      description="Tài khoản điều phối đã được xác minh. Các module đơn hàng và phân công giao nhận sẽ được bổ sung tại đây."
+      description="Ưu tiên các đơn chưa phân công, theo dõi tài xế đang hoạt động và xử lý cảnh báo giao nhận trong ca."
     />
   );
 }

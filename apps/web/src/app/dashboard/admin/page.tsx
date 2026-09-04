@@ -7,7 +7,7 @@ export default function AdminDashboardPage(): React.JSX.Element {
       roleCode={RoleCode.ADMIN}
       heading="Bảng điều khiển quản trị"
       subtitle="Quản lý người dùng, phân quyền và toàn bộ hệ thống."
-      description="Tài khoản quản trị đã được xác minh. Các màn hình quản trị chi tiết sẽ được nối vào đây ở bước tiếp theo."
+      description="Theo dõi sức khỏe vận hành, bảo mật dữ liệu và các chỉ số quan trọng của toàn bộ mạng lưới DeliverTrust."
     />
   );
 }
