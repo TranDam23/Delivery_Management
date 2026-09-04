@@ -32,6 +32,8 @@ export type BlockchainEventType = (typeof BlockchainEventType)[keyof typeof Bloc
 export const ContactType = {
   SENDER: "sender",
   RECEIVER: "receiver",
+  /** Mot lien he vua nhan hang vua gui hang — dac ta muc 10 "Ca hai". */
+  BOTH: "both",
 } as const;
 export type ContactType = (typeof ContactType)[keyof typeof ContactType];
 
