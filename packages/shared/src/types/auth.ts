@@ -13,6 +13,16 @@ export interface AuthTokenPayload {
   roleCode: RoleCode;
 }
 
+/** Thong tin tai khoan an toan de gui ve client sau khi dang nhap. */
+export interface AuthenticatedUser {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  avatar: string | null;
+  roleCode: RoleCode;
+}
+
 const ROLE_CODES = Object.values(RoleCode) as string[];
 
 /** Type guard dung o ranh gioi he thong (dang nhap, doc token) truoc khi tin vao roleCode. */

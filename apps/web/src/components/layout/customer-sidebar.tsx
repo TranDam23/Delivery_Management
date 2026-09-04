@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LogoutButton } from "@/components/auth/logout-button";
 
 /**
  * Menu khach hang lay nguyen tu CUSTOMER_NAV trong ban thiet ke. Muc nao chua
@@ -58,6 +59,10 @@ export function CustomerSidebar(): React.JSX.Element {
           );
         })}
       </nav>
+
+      <div className="mt-auto border-t border-dt-border pt-4">
+        <LogoutButton />
+      </div>
     </aside>
   );
 }

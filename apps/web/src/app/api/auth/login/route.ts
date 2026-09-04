@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import type { AuthenticatedUser } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { signAuthToken, verifyPassword } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
@@ -11,14 +12,17 @@ const loginSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const parsed = loginSchema.safeParse(await request.json());
+  const body = await request.json().catch(() => null);
+  const parsed = loginSchema.safeParse(body);
   if (!parsed.success) return fail(parsed.error.message);
+
+  const email = parsed.data.email.trim().toLowerCase();
 
   const supabase = getSupabaseServiceClient();
   const { data: userRaw, error } = await supabase
     .from("users")
     .select("id, full_name, email, password_hash, phone, avatar, status, role_id, roles(code)")
-    .eq("email", parsed.data.email)
+    .eq("email", email)
     .maybeSingle();
   const user = userRaw as
     | {
@@ -47,17 +51,26 @@ export async function POST(request: NextRequest) {
     return fail("Tai khoan chua duoc gan vai tro hop le", 403);
   }
 
+  // Cap nhat thoi diem dang nhap de phuc vu quan tri tai khoan. Loi cap nhat
+  // nay khong nen chan viec dang nhap neu giao dien chinh van hoat dong.
+  await supabase
+    .from("users")
+    .update({ last_login_at: new Date().toISOString() })
+    .eq("id", user.id);
+
   const token = signAuthToken({ userId: user.id, roleCode });
+
+  const authenticatedUser: AuthenticatedUser = {
+    id: user.id,
+    full_name: user.full_name,
+    email: user.email,
+    phone: user.phone,
+    avatar: user.avatar,
+    roleCode,
+  };
 
   return ok({
     token,
-    user: {
-      id: user.id,
-      full_name: user.full_name,
-      email: user.email,
-      phone: user.phone,
-      avatar: user.avatar,
-      roleCode,
-    },
+    user: authenticatedUser,
   });
 }
