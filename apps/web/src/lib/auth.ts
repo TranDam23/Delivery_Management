@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
-import type { AuthTokenPayload } from "@delivery/shared";
+import { normalizeRoleCode, type AuthTokenPayload } from "@delivery/shared";
 
 // Dinh nghia goc nam o packages/shared de mobile dung chung. Re-export cho
 // code cu trong apps/web van import tu day duoc.
@@ -29,7 +29,18 @@ export function signAuthToken(payload: AuthTokenPayload): string {
 }
 
 export function verifyAuthToken(token: string): AuthTokenPayload {
-  return jwt.verify(token, getJwtSecret()) as AuthTokenPayload;
+  const decoded = jwt.verify(token, getJwtSecret()) as unknown;
+  if (!decoded || typeof decoded !== "object") {
+    throw new Error("Invalid auth token payload");
+  }
+
+  const payload = decoded as Record<string, unknown>;
+  const roleCode = normalizeRoleCode(payload.roleCode);
+  if (typeof payload.userId !== "string" || !roleCode) {
+    throw new Error("Invalid auth token claims");
+  }
+
+  return { userId: payload.userId, roleCode };
 }
 
 /** Doc va xac thuc Bearer token tu header Authorization cua request (dung boi web + mobile). */

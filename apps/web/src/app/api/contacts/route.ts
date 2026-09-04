@@ -25,6 +25,14 @@ function seesAllContacts(roleCode: RoleCode): boolean {
   return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
 }
 
+function canManageContacts(roleCode: RoleCode): boolean {
+  return (
+    roleCode === RoleCode.ADMIN ||
+    roleCode === RoleCode.DISPATCHER ||
+    roleCode === RoleCode.CUSTOMER
+  );
+}
+
 /** Vai tro 'both' phai xuat hien ca khi loc 'sender' lan khi loc 'receiver'. */
 function typeFilterValues(type: ContactType): ContactType[] {
   if (type === ContactType.BOTH) return [ContactType.BOTH];
@@ -78,6 +86,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const parsed = createContactSchema.safeParse(await request.json());
   if (!parsed.success) return fail(parsed.error.message);

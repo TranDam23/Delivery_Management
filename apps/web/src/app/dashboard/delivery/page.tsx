@@ -7,7 +7,7 @@ export default function DeliveryDashboardPage(): React.JSX.Element {
       roleCode={RoleCode.DELIVERY_STAFF}
       heading="Bảng điều khiển giao nhận"
       subtitle="Cập nhật trạng thái và xác minh hành trình giao hàng."
-      description="Tài khoản nhân viên giao nhận đã được xác minh. Các thao tác cập nhật chuyến giao sẽ được triển khai ở bước tiếp theo."
+      description="Kiểm tra đơn tiếp theo, tuyến đường, COD cần thu và hoàn tất từng mốc giao nhận trong ca."
     />
   );
 }

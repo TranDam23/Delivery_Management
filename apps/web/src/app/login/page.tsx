@@ -1,8 +1,9 @@
 "use client";
 
-import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AuthenticatedUser } from "@delivery/shared";
+import { normalizeRoleCode } from "@delivery/shared";
 import { getStoredUser, getToken, setStoredUser, setToken } from "@/lib/api-client";
 import { roleHomePath } from "@/lib/role-routing";
 import { useRouter } from "next/navigation";
@@ -26,10 +27,15 @@ export default function LoginPage(): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function handleBack(): void {
+    router.replace("/");
+  }
+
   useEffect(() => {
-    const storedUser = getStoredUser<AuthenticatedUser>();
-    if (getToken() && storedUser?.roleCode) {
-      router.replace(roleHomePath(storedUser.roleCode));
+    const storedUser = getStoredUser<{ roleCode?: unknown }>();
+    const storedRoleCode = normalizeRoleCode(storedUser?.roleCode);
+    if (getToken() && storedRoleCode) {
+      router.replace(roleHomePath(storedRoleCode));
     }
   }, [router]);
 
@@ -69,7 +75,14 @@ export default function LoginPage(): React.JSX.Element {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#090a0c] px-4 py-12">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(223,179,41,0.08),transparent_34%)]" />
-      <span className="absolute left-6 top-4 text-[12px] text-white/[0.12]">login</span>
+      <button
+        type="button"
+        onClick={handleBack}
+        className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-[11px] text-dt-muted transition hover:border-dt-yellow/40 hover:text-dt-text"
+      >
+        <ArrowLeft size={15} strokeWidth={1.8} />
+        Quay lại
+      </button>
 
       <section className="relative z-10 flex w-full max-w-[380px] flex-col items-center">
         <div className="mb-7 flex flex-col items-center">

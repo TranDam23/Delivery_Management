@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { BlockchainEventType } from "@delivery/shared";
+import { BlockchainEventType, RoleCode } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { recordDeliveryEventOnChain } from "@/lib/blockchain/record-event";
@@ -45,14 +45,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const { data: deliveryRaw, error: deliveryError } = await supabase
     .from("deliveries")
-    .select("id, order_id, orders(tracking_code)")
+    .select("id, order_id, delivery_staff_id, orders(tracking_code)")
     .eq("id", deliveryId)
     .maybeSingle();
   const delivery = deliveryRaw as
-    | { id: string; order_id: string; orders: { tracking_code: string } | null }
+    | {
+        id: string;
+        order_id: string;
+        delivery_staff_id: string;
+        orders: { tracking_code: string } | null;
+      }
     | null;
   if (deliveryError) return fail(deliveryError.message, 500);
   if (!delivery || !delivery.orders) return fail("Delivery not found", 404);
+  if (auth.roleCode !== RoleCode.ADMIN && auth.roleCode !== RoleCode.DELIVERY_STAFF) {
+    return fail("Forbidden", 403);
+  }
+  if (auth.roleCode === RoleCode.DELIVERY_STAFF && delivery.delivery_staff_id !== auth.userId) {
+    return fail("Forbidden", 403);
+  }
 
   const { data: status, error: statusError } = await supabase
     .from("order_statuses")

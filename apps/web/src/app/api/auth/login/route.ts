@@ -4,7 +4,7 @@ import type { AuthenticatedUser } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { signAuthToken, verifyPassword } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
-import { isRoleCode } from "@delivery/shared";
+import { normalizeRoleCode } from "@delivery/shared";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
 
   // Khong cap token khi tai khoan chua duoc gan vai tro hop le: roleCode rong
   // se lam cac guard theo vai tro o nhom Giao nhan truot qua im lang.
-  const roleCode = user.roles?.code;
-  if (!isRoleCode(roleCode)) {
+  const roleCode = normalizeRoleCode(user.roles?.code);
+  if (!roleCode) {
     return fail("Tai khoan chua duoc gan vai tro hop le", 403);
   }
 

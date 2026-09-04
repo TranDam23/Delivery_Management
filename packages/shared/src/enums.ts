@@ -90,7 +90,14 @@ export const RoleCode = {
   ADMIN: "ADMIN",
   DISPATCHER: "DISPATCHER",
   DELIVERY_STAFF: "DELIVERY_STAFF",
+  /** Tai khoan khach hang co the vua gui vua nhan hang. */
+  CUSTOMER: "CUSTOMER",
+} as const;
+export type RoleCode = (typeof RoleCode)[keyof typeof RoleCode];
+
+/** Ma role cu chi dung trong migration va tuong thich tai khoan da ton tai. */
+export const LegacyRoleCode = {
   SENDER: "SENDER",
   RECEIVER: "RECEIVER",
 } as const;
-export type RoleCode = (typeof RoleCode)[keyof typeof RoleCode];
+export type LegacyRoleCode = (typeof LegacyRoleCode)[keyof typeof LegacyRoleCode];

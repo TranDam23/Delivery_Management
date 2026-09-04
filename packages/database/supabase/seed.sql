@@ -6,8 +6,7 @@ insert into roles (name, code, description) values
   ('Quan tri vien', 'ADMIN', 'Toan quyen quan ly he thong'),
   ('Dieu phoi vien', 'DISPATCHER', 'Tao don, phan cong nhan vien giao hang, doi soat COD'),
   ('Nhan vien giao hang', 'DELIVERY_STAFF', 'Quet QR, cap nhat trang thai giao nhan'),
-  ('Nguoi gui', 'SENDER', 'Tao don hang, tra cuu hanh trinh don gui'),
-  ('Nguoi nhan', 'RECEIVER', 'Tra cuu hanh trinh don nhan');
+  ('Khach hang', 'CUSTOMER', 'Tao don, quan ly don gui va don nhan, tra cuu hanh trinh');
 
 insert into permissions (name, code, module, description) values
   ('Xem don hang', 'ORDER_VIEW', 'orders', 'Xem danh sach va chi tiet don hang'),
@@ -37,11 +36,11 @@ select r.id, p.id from roles r, permissions p
 where r.code = 'DELIVERY_STAFF'
   and p.code in ('ORDER_VIEW', 'DELIVERY_UPDATE_STATUS', 'BLOCKCHAIN_VERIFY');
 
--- SENDER / RECEIVER
+-- CUSTOMER: cung mot tai khoan cho ca luong gui va nhan
 insert into role_permissions (role_id, permission_id)
 select r.id, p.id from roles r, permissions p
-where r.code in ('SENDER', 'RECEIVER')
-  and p.code in ('ORDER_VIEW', 'BLOCKCHAIN_VERIFY');
+where r.code = 'CUSTOMER'
+  and p.code in ('ORDER_VIEW', 'ORDER_CREATE', 'ORDER_CANCEL', 'BLOCKCHAIN_VERIFY');
 
 insert into order_statuses (code, name, description, is_final) values
   ('CREATED', 'Da tao don', 'Don hang vua duoc tao, cho lay hang', false),

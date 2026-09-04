@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import type { AuthenticatedUser } from "@delivery/shared";
-import { isRoleCode } from "@delivery/shared";
+import { normalizeRoleCode } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
     return fail("Tai khoan khong con hoat dong", 401);
   }
 
-  const roleCode = user.roles?.code;
-  if (!isRoleCode(roleCode)) {
+  const roleCode = normalizeRoleCode(user.roles?.code);
+  if (!roleCode) {
     return fail("Tai khoan chua duoc gan vai tro hop le", 403);
   }
 
