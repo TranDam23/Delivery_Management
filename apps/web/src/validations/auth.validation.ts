@@ -35,12 +35,33 @@ export const registerSchema = z
     }
   });
 
+export const loginSchema = z
+  .object({
+    email: z.string().trim().email("email must be a valid email address"),
+    password: z.string().min(1, "password is required"),
+  })
+  .strict();
+
 export type RegisterValidationResult =
   | { success: true; data: RegisterReqBody }
   | { success: false; error: string };
 
 export function validateRegisterInput(body: unknown): RegisterValidationResult {
   const result = registerSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type LoginValidationResult =
+  | { success: true; data: import("@/requests/auth.requests").LoginReqBody }
+  | { success: false; error: string };
+
+export function validateLoginInput(body: unknown): LoginValidationResult {
+  const result = loginSchema.safeParse(body);
   if (result.success) return { success: true, data: result.data };
 
   const message = result.error.issues

@@ -24,8 +24,12 @@ export async function verifyPassword(
   return bcrypt.compare(plainPassword, passwordHash);
 }
 
-export function signAuthToken(payload: AuthTokenPayload): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
+export function signAuthToken(
+  payload: AuthTokenPayload & { tokenType: "access" | "refresh" },
+): string {
+  return jwt.sign(payload, getJwtSecret(), {
+    expiresIn: payload.tokenType === "access" ? "15m" : "7d",
+  });
 }
 
 export function verifyAuthToken(token: string): AuthTokenPayload {
@@ -36,11 +40,15 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
 
   const payload = decoded as Record<string, unknown>;
   const roleCode = normalizeRoleCode(payload.roleCode);
-  if (typeof payload.userId !== "string" || !roleCode) {
+  if (
+    typeof payload.userId !== "string" ||
+    !roleCode ||
+    (payload.tokenType !== "access" && payload.tokenType !== "refresh")
+  ) {
     throw new Error("Invalid auth token claims");
   }
 
-  return { userId: payload.userId, roleCode };
+  return { userId: payload.userId, roleCode, tokenType: payload.tokenType };
 }
 
 /** Doc va xac thuc Bearer token tu header Authorization cua request (dung boi web + mobile). */
@@ -49,7 +57,8 @@ export function getAuthFromRequest(request: NextRequest): AuthTokenPayload | nul
   if (!header?.startsWith("Bearer ")) return null;
 
   try {
-    return verifyAuthToken(header.slice("Bearer ".length));
+    const payload = verifyAuthToken(header.slice("Bearer ".length));
+    return payload.tokenType === "access" ? payload : null;
   } catch {
     return null;
   }

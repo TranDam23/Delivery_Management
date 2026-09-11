@@ -5,3 +5,8 @@ export interface RegisterReqBody {
   confirm_password: string;
   phone?: string | null;
 }
+
+export interface LoginReqBody {
+  email: string;
+  password: string;
+}

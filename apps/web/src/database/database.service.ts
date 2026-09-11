@@ -5,8 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export class DatabaseService {
   private readonly client: SupabaseClient<Database>;
 
-  constructor(client = getSupabaseServiceClient()) {
-    this.client = client;
+  constructor(client?: SupabaseClient<Database>) {
+    this.client = client ?? getSupabaseServiceClient();
   }
 
   getClient(): SupabaseClient<Database> {

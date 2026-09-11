@@ -1,7 +1,8 @@
-import { RoleCode, UserStatus } from "@delivery/shared";
-import { hashPassword } from "@/lib/auth";
-import type { RegisterReqBody } from "@/requests/auth.requests";
+import { normalizeRoleCode, RoleCode, UserStatus } from "@delivery/shared";
+import { hashPassword, signAuthToken, verifyPassword } from "@/lib/auth";
+import type { LoginReqBody, RegisterReqBody } from "@/requests/auth.requests";
 import type { PublicUser } from "@/models/schemas/User.schema";
+import { AuthRepository } from "@/repositories/auth.repository";
 import { RoleRepository } from "@/repositories/role.repository";
 import { UserRepository } from "@/repositories/user.repository";
 
@@ -9,6 +10,7 @@ export class AuthService {
   constructor(
     private readonly users: UserRepository,
     private readonly roles: RoleRepository,
+    private readonly authRepository?: AuthRepository,
   ) {}
 
   async register(input: RegisterReqBody): Promise<PublicUser> {
@@ -29,5 +31,49 @@ export class AuthService {
       phone: input.phone ?? null,
       status: UserStatus.ACTIVE,
     });
+  }
+
+  async login(input: LoginReqBody): Promise<{
+    user: {
+      id: string;
+      full_name: string;
+      email: string;
+      phone: string | null;
+      status: UserStatus;
+      roleCode: RoleCode;
+    };
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    if (!this.authRepository) throw new Error("Authentication repository is not configured");
+
+    const user = await this.authRepository.findUserByEmail(
+      input.email.trim().toLowerCase(),
+    );
+    if (!user) throw new Error("Invalid email or password");
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new Error("Account is not active");
+    }
+
+    const passwordMatches = await verifyPassword(input.password, user.password_hash);
+    if (!passwordMatches) throw new Error("Invalid email or password");
+
+    const roleCode = normalizeRoleCode(user.roleCode);
+    if (!roleCode) throw new Error("Account role is invalid");
+
+    await this.authRepository.updateLastLoginAt(user.id);
+
+    return {
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        status: user.status,
+        roleCode,
+      },
+      accessToken: signAuthToken({ userId: user.id, roleCode, tokenType: "access" }),
+      refreshToken: signAuthToken({ userId: user.id, roleCode, tokenType: "refresh" }),
+    };
   }
 }
