@@ -1,5 +1,10 @@
 import { normalizeRoleCode, RoleCode, UserStatus } from "@delivery/shared";
-import { hashPassword, signAuthToken, verifyPassword } from "@/lib/auth";
+import {
+  hashPassword,
+  signAuthToken,
+  verifyAuthToken,
+  verifyPassword,
+} from "@/lib/auth";
 import type { LoginReqBody, RegisterReqBody } from "@/requests/auth.requests";
 import type { PublicUser } from "@/models/schemas/User.schema";
 import { AuthRepository } from "@/repositories/auth.repository";
@@ -8,12 +13,16 @@ import { UserRepository } from "@/repositories/user.repository";
 
 export class AuthService {
   constructor(
-    private readonly users: UserRepository,
-    private readonly roles: RoleRepository,
+    private readonly users?: UserRepository,
+    private readonly roles?: RoleRepository,
     private readonly authRepository?: AuthRepository,
   ) {}
 
   async register(input: RegisterReqBody): Promise<PublicUser> {
+    if (!this.users || !this.roles) {
+      throw new Error("Registration repositories are not configured");
+    }
+
     const email = input.email.trim().toLowerCase();
     const existingUser = await this.users.findByEmail(email);
     if (existingUser) {
@@ -75,5 +84,14 @@ export class AuthService {
       accessToken: signAuthToken({ userId: user.id, roleCode, tokenType: "access" }),
       refreshToken: signAuthToken({ userId: user.id, roleCode, tokenType: "refresh" }),
     };
+  }
+
+  logout(accessToken: string): { message: string } {
+    const token = verifyAuthToken(accessToken);
+    if (token.tokenType !== "access") {
+      throw new Error("Invalid access token");
+    }
+
+    return { message: "Logout successful" };
   }
 }

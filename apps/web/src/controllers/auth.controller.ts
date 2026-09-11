@@ -48,3 +48,13 @@ export async function loginController(input: LoginReqBody) {
     return fail("Unable to login", 500);
   }
 }
+
+export async function logoutController(accessToken: string) {
+  try {
+    const result = new AuthService().logout(accessToken);
+
+    return ok(result);
+  } catch {
+    return fail("Invalid or expired access token", 401);
+  }
+}

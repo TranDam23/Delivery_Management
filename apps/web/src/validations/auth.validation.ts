@@ -69,3 +69,21 @@ export function validateLoginInput(body: unknown): LoginValidationResult {
     .join("; ");
   return { success: false, error: `Validation failed: ${message}` };
 }
+
+export function validateAuthorizationHeader(
+  header: string | null,
+): { success: true; token: string } | { success: false; error: string } {
+  if (!header) {
+    return { success: false, error: "Authorization header is required" };
+  }
+
+  const match = /^Bearer\s+(\S+)$/.exec(header);
+  if (!match?.[1]) {
+    return {
+      success: false,
+      error: "Authorization header must use the Bearer token format",
+    };
+  }
+
+  return { success: true, token: match[1] };
+}
