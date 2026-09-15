@@ -101,21 +101,46 @@ export async function GET(request: NextRequest) {
   if (!auth) return fail("Unauthorized", 401);
 
   const { searchParams } = new URL(request.url);
-  const page = Number(searchParams.get("page") ?? "1");
-  const pageSize = Number(searchParams.get("pageSize") ?? "20");
+  const requestedPage = Number(searchParams.get("page") ?? "1");
+  const requestedPageSize = Number(searchParams.get("pageSize") ?? "20");
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const pageSize =
+    Number.isInteger(requestedPageSize) && requestedPageSize > 0
+      ? Math.min(requestedPageSize, 100)
+      : 20;
   const statusCode = searchParams.get("status");
+  const direction = searchParams.get("direction");
+  if (direction && direction !== "sent" && direction !== "received") {
+    return fail("direction phải là sent hoặc received");
+  }
 
   const supabase = getSupabaseServiceClient();
   let query = supabase
     .from("orders")
     .select(
-      "id, tracking_code, qr_code, service_type, cod_amount, total_fee, note, created_at, order_statuses(code, name)",
+      `id, tracking_code, qr_code, sender_id, receiver_id, service_type, cod_amount, total_fee,
+       note, created_at,
+       order_statuses!inner(code, name, is_final),
+       sender:contacts!orders_sender_id_fkey(id, name, phone),
+       receiver:contacts!orders_receiver_id_fkey(id, name, phone),
+       pickup_address:addresses!orders_pickup_address_id_fkey(id, recipient_name, phone, address_line, ward, district, province),
+       delivery_address:addresses!orders_delivery_address_id_fkey(id, recipient_name, phone, address_line, ward, district, province)`,
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1);
 
-  if (!canViewAllOrders(auth.roleCode)) {
+  if (auth.roleCode === RoleCode.CUSTOMER && direction) {
+    const contacts = await supabase.from("contacts").select("id").eq("user_id", auth.userId);
+    if (contacts.error) return fail(contacts.error.message, 500);
+
+    const contactIds = (contacts.data ?? []).map((contact) => contact.id);
+    if (contactIds.length === 0) {
+      return ok({ items: [], total: 0, page, pageSize });
+    }
+
+    query = query.in(direction === "sent" ? "sender_id" : "receiver_id", contactIds);
+  } else if (!canViewAllOrders(auth.roleCode)) {
     const visible = await findVisibleOrderIds(supabase, auth);
     if (visible.error) return fail(visible.error, 500);
     if (visible.ids.length === 0) {

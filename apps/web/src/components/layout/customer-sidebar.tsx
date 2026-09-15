@@ -12,11 +12,11 @@ import { LogoutButton } from "@/components/auth/logout-button";
  */
 const CUSTOMER_NAV: { label: string; href?: string }[] = [
   { label: "Tổng quan", href: "/customer" },
-  { label: "Tạo đơn hàng" },
-  { label: "Đơn tôi gửi" },
-  { label: "Đơn tôi nhận" },
+  { label: "Tạo đơn hàng", href: "/orders/new" },
+  { label: "Đơn tôi gửi", href: "/orders/sent" },
+  { label: "Đơn tôi nhận", href: "/orders/received" },
   { label: "Sổ địa chỉ", href: "/contacts" },
-  { label: "Theo dõi đơn hàng" },
+  { label: "Theo dõi đơn hàng", href: "/orders/track" },
   { label: "COD" },
   { label: "Thông báo" },
   { label: "Hồ sơ" },
