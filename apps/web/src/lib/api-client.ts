@@ -48,6 +48,12 @@ export function setStoredUser<T>(user: T, remember = true): void {
   target.setItem(USER_KEY, JSON.stringify(user));
 }
 
+/** Cập nhật user cache mà vẫn giữ cách lưu của phiên đăng nhập hiện tại. */
+export function updateStoredUser<T>(user: T): void {
+  const remember = typeof window !== "undefined" && window.localStorage.getItem(TOKEN_KEY) !== null;
+  setStoredUser(user, remember);
+}
+
 export function clearStoredUser(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(USER_KEY);

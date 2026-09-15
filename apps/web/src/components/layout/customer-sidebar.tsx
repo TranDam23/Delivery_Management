@@ -19,7 +19,7 @@ const CUSTOMER_NAV: { label: string; href?: string }[] = [
   { label: "Theo dõi đơn hàng", href: "/orders/track" },
   { label: "COD" },
   { label: "Thông báo" },
-  { label: "Hồ sơ" },
+  { label: "Hồ sơ", href: "/profile" },
 ];
 
 export function CustomerSidebar(): React.JSX.Element {

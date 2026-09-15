@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { RoleCode } from "@delivery/shared";
+import { normalizePhone, RoleCode } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
@@ -11,8 +11,8 @@ interface RouteParams {
 type OrderAccess = {
   id: string;
   created_by: string;
-  sender: { user_id: string | null } | null;
-  receiver: { user_id: string | null } | null;
+  sender: { user_id: string | null; phone: string } | null;
+  receiver: { user_id: string | null; phone: string } | null;
 };
 
 function canViewAllOrders(roleCode: RoleCode): boolean {
@@ -42,10 +42,25 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   if (accessError) return fail(accessError.message, 500);
   if (!access) return fail("Order not found", 404);
 
+  const { data: viewer, error: viewerError } = await supabase
+    .from("users")
+    .select("phone")
+    .eq("id", auth.userId)
+    .maybeSingle();
+  if (viewerError) return fail(viewerError.message, 500);
+  if (!viewer) return fail("Unauthorized", 401);
+
+  const viewerPhone = typeof viewer.phone === "string" ? normalizePhone(viewer.phone) : "";
+  const isPhoneParticipant =
+    viewerPhone.length > 0 &&
+    (normalizePhone(access.sender?.phone ?? "") === viewerPhone ||
+      normalizePhone(access.receiver?.phone ?? "") === viewerPhone);
+
   const isCustomerParticipant =
     access.created_by === auth.userId ||
     access.sender?.user_id === auth.userId ||
-    access.receiver?.user_id === auth.userId;
+    access.receiver?.user_id === auth.userId ||
+    isPhoneParticipant;
 
   let isAssignedDeliveryStaff = false;
   if (auth.roleCode === RoleCode.DELIVERY_STAFF) {

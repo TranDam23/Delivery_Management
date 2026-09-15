@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
-import type { AuthenticatedUser } from "@delivery/shared";
-import { normalizeRoleCode } from "@delivery/shared";
+import { normalizeRoleCode, updateProfileSchema, type AuthenticatedUser } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+
+const USER_SELECT = "id, full_name, email, phone, avatar, status, roles(code)";
 
 type UserWithRole = {
   id: string;
@@ -15,6 +16,23 @@ type UserWithRole = {
   roles: { code: string } | null;
 };
 
+function toAuthenticatedUser(user: UserWithRole): AuthenticatedUser {
+  const roleCode = normalizeRoleCode(user.roles?.code);
+
+  if (!roleCode) {
+    throw new Error("Tai khoan chua duoc gan vai tro hop le");
+  }
+
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    email: user.email,
+    phone: user.phone,
+    avatar: user.avatar,
+    roleCode,
+  };
+}
+
 /** GET /api/auth/me — xac minh lai phien va vai tro hien tai tu Supabase. */
 export async function GET(request: NextRequest) {
   const auth = getAuthFromRequest(request);
@@ -22,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   const { data: userRaw, error } = await getSupabaseServiceClient()
     .from("users")
-    .select("id, full_name, email, phone, avatar, status, roles(code)")
+    .select(USER_SELECT)
     .eq("id", auth.userId)
     .maybeSingle();
 
@@ -33,19 +51,48 @@ export async function GET(request: NextRequest) {
     return fail("Tai khoan khong con hoat dong", 401);
   }
 
-  const roleCode = normalizeRoleCode(user.roles?.code);
-  if (!roleCode) {
+  try {
+    return ok({ user: toAuthenticatedUser(user) });
+  } catch {
     return fail("Tai khoan chua duoc gan vai tro hop le", 403);
   }
+}
 
-  const authenticatedUser: AuthenticatedUser = {
-    id: user.id,
-    full_name: user.full_name,
-    email: user.email,
-    phone: user.phone,
-    avatar: user.avatar,
-    roleCode,
-  };
+/** PATCH /api/auth/me — cap nhat thong tin ca nhan cua chinh tai khoan hien tai. */
+export async function PATCH(request: NextRequest) {
+  const auth = getAuthFromRequest(request);
+  if (!auth) return fail("Unauthorized", 401);
 
-  return ok({ user: authenticatedUser });
+  const body = await request.json().catch(() => null);
+  const parsed = updateProfileSchema.safeParse(body);
+  if (!parsed.success) return fail(parsed.error.message);
+
+  const updates: { full_name?: string; email?: string; phone?: string | null } = {};
+  if (parsed.data.full_name !== undefined) updates.full_name = parsed.data.full_name;
+  if (parsed.data.email !== undefined) updates.email = parsed.data.email;
+  if (parsed.data.phone !== undefined) updates.phone = parsed.data.phone;
+  if (Object.keys(updates).length === 0) return fail("Chưa có thông tin nào để cập nhật");
+
+  const { data: userRaw, error } = await getSupabaseServiceClient()
+    .from("users")
+    .update(updates)
+    .eq("id", auth.userId)
+    .select(USER_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") return fail("Email này đã được sử dụng", 409);
+    return fail(error.message, 500);
+  }
+
+  const user = userRaw as UserWithRole | null;
+  if (!user || user.status !== "active") {
+    return fail("Tai khoan khong con hoat dong", 401);
+  }
+
+  try {
+    return ok({ user: toAuthenticatedUser(user) });
+  } catch {
+    return fail("Tai khoan chua duoc gan vai tro hop le", 403);
+  }
 }
