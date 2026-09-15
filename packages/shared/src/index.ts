@@ -10,3 +10,4 @@ export * from "./types/blockchain";
 export * from "./types/misc";
 export * from "./validation/contact";
 export * from "./validation/address";
+export * from "./validation/profile";

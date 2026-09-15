@@ -119,10 +119,16 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
         heading={isSent ? "Đơn tôi gửi" : "Đơn tôi nhận"}
         subtitle={isSent ? "Các đơn hàng bạn đứng tên người gửi." : "Các đơn hàng đang chuyển đến thông tin của bạn."}
         action={
-          <Link href="/orders/new" className={buttonClassName()}>
-            <Plus size={15} />
-            Tạo đơn hàng
-          </Link>
+          isSent ? (
+            <Link href="/orders/new" className={buttonClassName()}>
+              <Plus size={15} />
+              Tạo đơn hàng
+            </Link>
+          ) : (
+            <Link href="/orders/track" className={buttonClassName("secondary")}>
+              Tra cứu vận đơn
+            </Link>
+          )
         }
       />
 
@@ -172,9 +178,23 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
 
       {!loading && !needLogin && !error && orders.length === 0 ? (
         <Card>
-          <p className="text-[13px]">Chưa có đơn hàng trong nhóm này.</p>
-          <p className="text-[12px] text-dt-muted">Bạn có thể tạo một đơn mới hoặc dùng mã vận đơn để tra cứu.</p>
-          <Link href="/orders/new" className={`${buttonClassName()} mt-2 w-fit`}>Tạo đơn đầu tiên</Link>
+          <p className="text-[13px]">
+            {isSent ? "Chưa có đơn hàng do bạn đứng tên người gửi." : "Chưa có đơn hàng được gửi đến số điện thoại của bạn."}
+          </p>
+          <p className="text-[12px] text-dt-muted">
+            {isSent
+              ? "Bạn có thể tạo đơn mới từ sổ địa chỉ của mình."
+              : "Đơn nhận sẽ xuất hiện khi người gửi tạo đơn với số điện thoại này."}
+          </p>
+          {isSent ? (
+            <Link href="/orders/new" className={`${buttonClassName()} mt-2 w-fit`}>
+              Tạo đơn đầu tiên
+            </Link>
+          ) : (
+            <Link href="/orders/track" className={`${buttonClassName("secondary")} mt-2 w-fit`}>
+              Tra cứu vận đơn
+            </Link>
+          )}
         </Card>
       ) : null}
 
@@ -200,4 +220,3 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
     </>
   );
 }
-

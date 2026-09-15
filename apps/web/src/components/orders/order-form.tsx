@@ -4,8 +4,11 @@ import { ArrowLeft, CheckCircle2, MapPin, Plus, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ContactType,
   canBeReceiver,
   canBeSender,
+  normalizePhone,
+  type Address,
   type ContactWithDefaultAddress,
   type Paginated,
 } from "@delivery/shared";
@@ -29,6 +32,26 @@ interface FormState {
   codAmount: string;
   note: string;
 }
+
+type ContactSource = "addressBook" | "manual";
+
+interface ManualContactForm {
+  name: string;
+  phone: string;
+  addressLine: string;
+  ward: string;
+  district: string;
+  province: string;
+}
+
+const EMPTY_MANUAL_CONTACT: ManualContactForm = {
+  name: "",
+  phone: "",
+  addressLine: "",
+  ward: "",
+  district: "",
+  province: "",
+};
 
 const INITIAL_FORM: FormState = {
   senderId: "",
@@ -54,9 +77,146 @@ function numericValue(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function manualContactFromContact(contact: ContactWithDefaultAddress): ManualContactForm {
+  return {
+    name: contact.name,
+    phone: contact.phone,
+    addressLine: contact.default_address?.address_line ?? "",
+    ward: contact.default_address?.ward ?? "",
+    district: contact.default_address?.district ?? "",
+    province: contact.default_address?.province ?? "",
+  };
+}
+
+function manualAddressText(contact: ManualContactForm): string {
+  return [contact.addressLine, contact.ward, contact.district, contact.province]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ") || "Chưa nhập địa chỉ";
+}
+
+function validateManualContact(contact: ManualContactForm, label: string): string | null {
+  if (!contact.name.trim() || !contact.phone.trim() || !contact.addressLine.trim()) {
+    return `Vui lòng nhập họ tên, số điện thoại và địa chỉ của ${label}.`;
+  }
+
+  if (!/^0\d{9}$/.test(normalizePhone(contact.phone))) {
+    return `Số điện thoại của ${label} phải gồm 10 chữ số và bắt đầu bằng 0.`;
+  }
+
+  return null;
+}
+
+interface ManualContactFieldsProps {
+  roleLabel: string;
+  addressLabel: string;
+  value: ManualContactForm;
+  onChange: (field: keyof ManualContactForm, value: string) => void;
+}
+
+function ManualContactFields({
+  roleLabel,
+  addressLabel,
+  value,
+  onChange,
+}: ManualContactFieldsProps): React.JSX.Element {
+  return (
+    <div className="space-y-3 rounded-md border border-dt-yellow/25 bg-dt-yellow/5 p-3">
+      <p className="text-[11px] font-medium text-dt-yellow">Nhập thông tin {roleLabel.toLowerCase()}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField
+          label="Họ tên"
+          required
+          value={value.name}
+          onChange={(event) => onChange("name", event.target.value)}
+        />
+        <TextField
+          label="Số điện thoại"
+          required
+          inputMode="tel"
+          value={value.phone}
+          onChange={(event) => onChange("phone", event.target.value)}
+        />
+      </div>
+      <TextField
+        label={addressLabel}
+        required
+        placeholder="Số nhà, tên đường"
+        value={value.addressLine}
+        onChange={(event) => onChange("addressLine", event.target.value)}
+      />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <TextField label="Phường/Xã" value={value.ward} onChange={(event) => onChange("ward", event.target.value)} />
+        <TextField label="Quận/Huyện" value={value.district} onChange={(event) => onChange("district", event.target.value)} />
+        <TextField label="Tỉnh/Thành phố" value={value.province} onChange={(event) => onChange("province", event.target.value)} />
+      </div>
+      <p className="text-[10px] leading-4 text-dt-muted">Thông tin nhập trực tiếp sẽ được lưu vào sổ địa chỉ để dùng lại cho các đơn sau.</p>
+    </div>
+  );
+}
+
+async function ensureManualContact({
+  input,
+  type,
+  contacts,
+  cache,
+}: {
+  input: ManualContactForm;
+  type: ContactType;
+  contacts: ContactWithDefaultAddress[];
+  cache: Map<string, ContactWithDefaultAddress>;
+}): Promise<ContactWithDefaultAddress> {
+  const normalizedPhone = normalizePhone(input.phone);
+  let contact = cache.get(normalizedPhone) ?? contacts.find((item) => normalizePhone(item.phone) === normalizedPhone);
+
+  if (!contact) {
+    contact = await apiFetch<ContactWithDefaultAddress>("/api/contacts", {
+      method: "POST",
+      body: JSON.stringify({
+        type,
+        name: input.name.trim(),
+        phone: normalizedPhone,
+      }),
+    });
+  } else {
+    const changes: { name?: string; type?: ContactType } = {};
+    if (contact.name !== input.name.trim()) changes.name = input.name.trim();
+    if (type === ContactType.SENDER && !canBeSender(contact.type)) changes.type = ContactType.BOTH;
+    if (type === ContactType.RECEIVER && !canBeReceiver(contact.type)) changes.type = ContactType.BOTH;
+
+    if (Object.keys(changes).length > 0) {
+      contact = await apiFetch<ContactWithDefaultAddress>(`/api/contacts/${encodeURIComponent(contact.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(changes),
+      });
+    }
+  }
+
+  const address = await apiFetch<Address>(`/api/contacts/${encodeURIComponent(contact.id)}/addresses`, {
+    method: "POST",
+    body: JSON.stringify({
+      recipient_name: input.name.trim(),
+      phone: normalizedPhone,
+      address_line: input.addressLine.trim(),
+      ward: input.ward.trim() || undefined,
+      district: input.district.trim() || undefined,
+      province: input.province.trim() || undefined,
+      is_default: true,
+    }),
+  });
+
+  const resolved = { ...contact, default_address_id: address.id, default_address: address };
+  cache.set(normalizedPhone, resolved);
+  return resolved;
+}
+
 export function NewOrderPage(): React.JSX.Element {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [senderSource, setSenderSource] = useState<ContactSource>("addressBook");
+  const [receiverSource, setReceiverSource] = useState<ContactSource>("addressBook");
+  const [manualSender, setManualSender] = useState<ManualContactForm>(EMPTY_MANUAL_CONTACT);
+  const [manualReceiver, setManualReceiver] = useState<ManualContactForm>(EMPTY_MANUAL_CONTACT);
   const [contacts, setContacts] = useState<ContactWithDefaultAddress[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -77,6 +237,8 @@ export function NewOrderPage(): React.JSX.Element {
           senderId: current.senderId || firstSender?.id || "",
           receiverId: current.receiverId || firstReceiver?.id || "",
         }));
+        setSenderSource((current) => current === "manual" || firstSender ? current : "manual");
+        setReceiverSource((current) => current === "manual" || firstReceiver ? current : "manual");
       } catch (caught) {
         if (mounted) setFormError(caught instanceof Error ? caught.message : "Không tải được sổ địa chỉ");
       } finally {
@@ -92,8 +254,8 @@ export function NewOrderPage(): React.JSX.Element {
 
   const senderContacts = useMemo(() => contacts.filter((contact) => canBeSender(contact.type)), [contacts]);
   const receiverContacts = useMemo(() => contacts.filter((contact) => canBeReceiver(contact.type)), [contacts]);
-  const sender = contacts.find((contact) => contact.id === form.senderId);
-  const receiver = contacts.find((contact) => contact.id === form.receiverId);
+  const selectedSender = contacts.find((contact) => contact.id === form.senderId);
+  const selectedReceiver = contacts.find((contact) => contact.id === form.receiverId);
   const weight = numericValue(form.weight);
   const baseFee = form.serviceType === "express" ? 50000 : form.serviceType === "same_day" ? 70000 : 30000;
   const estimatedFee = baseFee + Math.max(0, weight - 1) * 5000;
@@ -111,12 +273,22 @@ export function NewOrderPage(): React.JSX.Element {
     const codAmount = numericValue(form.codAmount);
     const declaredValue = numericValue(form.declaredValue);
 
-    if (!sender || !receiver) {
-      setFormError("Vui lòng chọn người gửi và người nhận trong sổ địa chỉ.");
+    if (senderSource === "addressBook" && !selectedSender) {
+      setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
       return;
     }
-    if (!sender.default_address || !receiver.default_address) {
-      setFormError("Người gửi và người nhận phải có địa chỉ mặc định trước khi tạo đơn.");
+    if (receiverSource === "addressBook" && !selectedReceiver) {
+      setFormError("Vui lòng chọn người nhận trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
+      return;
+    }
+    const senderManualError = senderSource === "manual" ? validateManualContact(manualSender, "người gửi") : null;
+    if (senderManualError) {
+      setFormError(senderManualError);
+      return;
+    }
+    const receiverManualError = receiverSource === "manual" ? validateManualContact(manualReceiver, "người nhận") : null;
+    if (receiverManualError) {
+      setFormError(receiverManualError);
       return;
     }
     if (!form.itemName.trim()) {
@@ -134,6 +306,23 @@ export function NewOrderPage(): React.JSX.Element {
 
     setSubmitting(true);
     try {
+      const manualContactCache = new Map<string, ContactWithDefaultAddress>();
+      const sender = senderSource === "manual"
+        ? await ensureManualContact({ input: manualSender, type: ContactType.SENDER, contacts, cache: manualContactCache })
+        : selectedSender;
+      const receiver = receiverSource === "manual"
+        ? await ensureManualContact({ input: manualReceiver, type: ContactType.RECEIVER, contacts, cache: manualContactCache })
+        : selectedReceiver;
+
+      if (!sender || !receiver) {
+        setFormError("Không xác định được thông tin người gửi hoặc người nhận.");
+        return;
+      }
+      if (!sender.default_address || !receiver.default_address) {
+        setFormError("Người gửi và người nhận phải có địa chỉ mặc định trước khi tạo đơn.");
+        return;
+      }
+
       const created = await apiFetch<{ id: string }>("/api/orders", {
         method: "POST",
         body: JSON.stringify({
@@ -166,7 +355,7 @@ export function NewOrderPage(): React.JSX.Element {
     <>
       <PageHeader
         heading="Tạo đơn hàng"
-        subtitle="Chọn liên hệ trong sổ địa chỉ để tạo một đơn gửi và theo dõi xuyên suốt hành trình."
+        subtitle="Chọn liên hệ trong sổ địa chỉ hoặc nhập trực tiếp thông tin để tạo đơn gửi."
         action={<Link href="/customer" className={buttonClassName("secondary")}><ArrowLeft size={14} /> Về tổng quan</Link>}
       />
 
@@ -176,7 +365,7 @@ export function NewOrderPage(): React.JSX.Element {
             <MapPin className="mt-0.5 shrink-0 text-dt-yellow" size={18} />
             <div>
               <p className="text-[13px] font-medium">Sổ địa chỉ chưa có liên hệ</p>
-              <p className="mt-1 text-[12px] leading-5 text-dt-muted">Thêm người gửi/người nhận và địa chỉ mặc định trước khi tạo đơn.</p>
+              <p className="mt-1 text-[12px] leading-5 text-dt-muted">Bạn vẫn có thể nhập trực tiếp người gửi và người nhận ở bên dưới, hoặc thêm liên hệ để dùng lại.</p>
               <Link href="/contacts/new" className={`${buttonClassName()} mt-3 w-fit`}><Plus size={14} /> Thêm liên hệ</Link>
             </div>
           </div>
@@ -188,48 +377,99 @@ export function NewOrderPage(): React.JSX.Element {
           <Card>
             <CardLabel>Thông tin giao nhận</CardLabel>
             <div className="grid gap-4 md:grid-cols-2">
-              <SelectField
-                label="Người gửi"
-                required
-                value={form.senderId}
-                disabled={loadingContacts || senderContacts.length === 0}
-                onChange={(event) => update("senderId", event.target.value)}
-                hint="Liên hệ phải có vai trò Người gửi hoặc Cả hai"
-              >
-                <option value="" className="bg-dt-panel2">Chọn người gửi</option>
-                {senderContacts.map((contact) => (
-                  <option key={contact.id} value={contact.id} className="bg-dt-panel2">
-                    {contact.name} · {contact.phone}{contact.default_address ? "" : " (chưa có địa chỉ)"}
-                  </option>
-                ))}
-              </SelectField>
-              <SelectField
-                label="Người nhận"
-                required
-                value={form.receiverId}
-                disabled={loadingContacts || receiverContacts.length === 0}
-                onChange={(event) => update("receiverId", event.target.value)}
-                hint="Liên hệ phải có vai trò Người nhận hoặc Cả hai"
-              >
-                <option value="" className="bg-dt-panel2">Chọn người nhận</option>
-                {receiverContacts.map((contact) => (
-                  <option key={contact.id} value={contact.id} className="bg-dt-panel2">
-                    {contact.name} · {contact.phone}{contact.default_address ? "" : " (chưa có địa chỉ)"}
-                  </option>
-                ))}
-              </SelectField>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-dt-muted">Người gửi *</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (senderSource === "addressBook" && selectedSender) setManualSender(manualContactFromContact(selectedSender));
+                      setSenderSource((current) => current === "addressBook" ? "manual" : "addressBook");
+                    }}
+                    className="text-[11px] text-dt-yellow hover:underline"
+                    aria-pressed={senderSource === "manual"}
+                  >
+                    {senderSource === "addressBook" ? "Nhập trực tiếp" : "Chọn từ sổ địa chỉ"}
+                  </button>
+                </div>
+                {senderSource === "addressBook" ? (
+                  <SelectField
+                    label="Liên hệ trong sổ địa chỉ"
+                    required
+                    value={form.senderId}
+                    disabled={loadingContacts || senderContacts.length === 0}
+                    onChange={(event) => update("senderId", event.target.value)}
+                    hint="Liên hệ phải có vai trò Người gửi hoặc Cả hai"
+                  >
+                    <option value="" className="bg-dt-panel2">Chọn người gửi</option>
+                    {senderContacts.map((contact) => (
+                      <option key={contact.id} value={contact.id} className="bg-dt-panel2">
+                        {contact.name} · {contact.phone}{contact.default_address ? "" : " (chưa có địa chỉ)"}
+                      </option>
+                    ))}
+                  </SelectField>
+                ) : (
+                  <ManualContactFields
+                    roleLabel="người gửi"
+                    addressLabel="Địa chỉ lấy hàng"
+                    value={manualSender}
+                    onChange={(field, value) => setManualSender((current) => ({ ...current, [field]: value }))}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-dt-muted">Người nhận *</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (receiverSource === "addressBook" && selectedReceiver) setManualReceiver(manualContactFromContact(selectedReceiver));
+                      setReceiverSource((current) => current === "addressBook" ? "manual" : "addressBook");
+                    }}
+                    className="text-[11px] text-dt-yellow hover:underline"
+                    aria-pressed={receiverSource === "manual"}
+                  >
+                    {receiverSource === "addressBook" ? "Nhập trực tiếp" : "Chọn từ sổ địa chỉ"}
+                  </button>
+                </div>
+                {receiverSource === "addressBook" ? (
+                  <SelectField
+                    label="Liên hệ trong sổ địa chỉ"
+                    required
+                    value={form.receiverId}
+                    disabled={loadingContacts || receiverContacts.length === 0}
+                    onChange={(event) => update("receiverId", event.target.value)}
+                    hint="Liên hệ phải có vai trò Người nhận hoặc Cả hai"
+                  >
+                    <option value="" className="bg-dt-panel2">Chọn người nhận</option>
+                    {receiverContacts.map((contact) => (
+                      <option key={contact.id} value={contact.id} className="bg-dt-panel2">
+                        {contact.name} · {contact.phone}{contact.default_address ? "" : " (chưa có địa chỉ)"}
+                      </option>
+                    ))}
+                  </SelectField>
+                ) : (
+                  <ManualContactFields
+                    roleLabel="người nhận"
+                    addressLabel="Địa chỉ giao hàng"
+                    value={manualReceiver}
+                    onChange={(field, value) => setManualReceiver((current) => ({ ...current, [field]: value }))}
+                  />
+                )}
+              </div>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-md border border-dt-border bg-dt-panel2 p-3">
                 <p className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-dt-muted"><MapPin size={13} className="text-dt-yellow" /> Địa chỉ lấy hàng</p>
-                <p className="mt-2 text-[12px] font-medium">{sender?.default_address?.recipient_name ?? "Chưa chọn"}</p>
-                <p className="mt-1 text-[11px] leading-5 text-dt-muted">{addressText(sender?.default_address ?? null)}</p>
+                <p className="mt-2 text-[12px] font-medium">{senderSource === "manual" ? manualSender.name || "Chưa nhập" : selectedSender?.default_address?.recipient_name ?? "Chưa chọn"}</p>
+                <p className="mt-1 text-[11px] leading-5 text-dt-muted">{senderSource === "manual" ? manualAddressText(manualSender) : addressText(selectedSender?.default_address ?? null)}</p>
               </div>
               <div className="rounded-md border border-dt-border bg-dt-panel2 p-3">
                 <p className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-dt-muted"><MapPin size={13} className="text-sky-300" /> Địa chỉ giao hàng</p>
-                <p className="mt-2 text-[12px] font-medium">{receiver?.default_address?.recipient_name ?? "Chưa chọn"}</p>
-                <p className="mt-1 text-[11px] leading-5 text-dt-muted">{addressText(receiver?.default_address ?? null)}</p>
+                <p className="mt-2 text-[12px] font-medium">{receiverSource === "manual" ? manualReceiver.name || "Chưa nhập" : selectedReceiver?.default_address?.recipient_name ?? "Chưa chọn"}</p>
+                <p className="mt-1 text-[11px] leading-5 text-dt-muted">{receiverSource === "manual" ? manualAddressText(manualReceiver) : addressText(selectedReceiver?.default_address ?? null)}</p>
               </div>
             </div>
             <p className="text-[11px] text-dt-muted">Muốn dùng địa chỉ khác? Cập nhật địa chỉ mặc định trong <Link href="/contacts" className="text-dt-yellow hover:underline">Sổ địa chỉ</Link>.</p>
@@ -278,7 +518,7 @@ export function NewOrderPage(): React.JSX.Element {
 
           <div className="flex flex-wrap gap-2">
             <Link href="/customer" className={buttonClassName("secondary")}>Hủy</Link>
-            <Button type="submit" disabled={submitting || loadingContacts || contacts.length === 0}>
+            <Button type="submit" disabled={submitting || loadingContacts}>
               <CheckCircle2 size={15} />
               {submitting ? "Đang tạo đơn..." : "Tạo đơn hàng"}
             </Button>
@@ -288,4 +528,3 @@ export function NewOrderPage(): React.JSX.Element {
     </>
   );
 }
-

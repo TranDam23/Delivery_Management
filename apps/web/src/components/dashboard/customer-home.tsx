@@ -51,7 +51,8 @@ function OrderRow({ order, incoming }: { order: OrderListItem; incoming?: boolea
 }
 
 export function CustomerHome(): React.JSX.Element {
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
+  const [sentOrders, setSentOrders] = useState<OrderListItem[]>([]);
+  const [receivedOrders, setReceivedOrders] = useState<OrderListItem[]>([]);
   const [contacts, setContacts] = useState<ContactWithDefaultAddress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,12 +61,14 @@ export function CustomerHome(): React.JSX.Element {
     let mounted = true;
     async function loadDashboard(): Promise<void> {
       try {
-        const [ordersPage, contactsPage] = await Promise.all([
-          apiFetch<Paginated<OrderListItem>>("/api/orders?pageSize=100"),
+        const [sentPage, receivedPage, contactsPage] = await Promise.all([
+          apiFetch<Paginated<OrderListItem>>("/api/orders?direction=sent&pageSize=100"),
+          apiFetch<Paginated<OrderListItem>>("/api/orders?direction=received&pageSize=100"),
           apiFetch<Paginated<ContactWithDefaultAddress>>("/api/contacts?pageSize=100"),
         ]);
         if (!mounted) return;
-        setOrders(ordersPage.items);
+        setSentOrders(sentPage.items);
+        setReceivedOrders(receivedPage.items);
         setContacts(contactsPage.items);
       } catch (caught) {
         if (!mounted) return;
@@ -80,9 +83,6 @@ export function CustomerHome(): React.JSX.Element {
     };
   }, []);
 
-  const contactIds = useMemo(() => new Set(contacts.map((contact) => contact.id)), [contacts]);
-  const sentOrders = useMemo(() => orders.filter((order) => contactIds.has(order.sender_id)), [contactIds, orders]);
-  const receivedOrders = useMemo(() => orders.filter((order) => contactIds.has(order.receiver_id)), [contactIds, orders]);
   const allCustomerOrders = useMemo(() => {
     const unique = new Map<string, OrderListItem>();
     [...sentOrders, ...receivedOrders].forEach((order) => unique.set(order.id, order));
