@@ -9,3 +9,4 @@ export * from "./types/cod";
 export * from "./types/blockchain";
 export * from "./types/misc";
 export * from "./validation/contact";
+export * from "./validation/address";

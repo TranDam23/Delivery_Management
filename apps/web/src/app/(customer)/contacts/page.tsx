@@ -1,5 +1,6 @@
 "use client";
 
+import { LoaderCircle, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ContactWithDefaultAddress, Paginated } from "@delivery/shared";
@@ -22,6 +23,7 @@ export default function ContactListPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadContacts = useCallback(async () => {
     setLoading(true);
@@ -45,6 +47,21 @@ export default function ContactListPage(): React.JSX.Element {
   useEffect(() => {
     void loadContacts();
   }, [loadContacts]);
+
+  async function handleDelete(contact: ContactWithDefaultAddress): Promise<void> {
+    if (!window.confirm(`Bạn có chắc muốn xóa liên hệ "${contact.name}" không?`)) return;
+
+    setDeletingId(contact.id);
+    setError(null);
+    try {
+      await apiFetch<{ id: string }>(`/api/contacts/${encodeURIComponent(contact.id)}`, { method: "DELETE" });
+      setContacts((current) => current.filter((item) => item.id !== contact.id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không xóa được liên hệ");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <>
@@ -99,7 +116,9 @@ export default function ContactListPage(): React.JSX.Element {
                 <th className="px-[10px] font-medium">Vai trò</th>
                 <th className="px-[10px] font-medium">Số điện thoại</th>
                 <th className="px-[10px] font-medium">Email</th>
+                <th className="px-[10px] font-medium">Địa chỉ</th>
                 <th className="px-[10px] font-medium">Cập nhật</th>
+                <th className="px-[10px] text-right font-medium">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -114,8 +133,33 @@ export default function ContactListPage(): React.JSX.Element {
                   </td>
                   <td className="px-[10px] text-[12px]">{contact.phone}</td>
                   <td className="px-[10px] text-[12px] text-dt-muted">{contact.email ?? "—"}</td>
+                  <td className="px-[10px]">
+                    <Link href={`/contacts/${contact.id}/addresses`} className="text-[11px] text-dt-yellow hover:underline">
+                      {contact.default_address ? "Xem địa chỉ" : "Thêm địa chỉ"}
+                    </Link>
+                  </td>
                   <td className="px-[10px] text-[12px] text-dt-muted">
                     {formatDate(contact.updated_at)}
+                  </td>
+                  <td className="px-[10px] text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <Link
+                        href={`/contacts/${contact.id}/edit`}
+                        aria-label={`Sửa ${contact.name}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-dt-border text-dt-muted hover:border-dt-yellow/50 hover:text-dt-yellow"
+                      >
+                        <Pencil size={14} />
+                      </Link>
+                      <button
+                        type="button"
+                        aria-label={`Xóa ${contact.name}`}
+                        onClick={() => void handleDelete(contact)}
+                        disabled={deletingId === contact.id}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-dt-border text-dt-muted hover:border-dt-red/50 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingId === contact.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
