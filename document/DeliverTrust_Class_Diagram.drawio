@@ -1,0 +1,257 @@
+<mxfile host="app.diagrams.net" agent="Codex">
+  <diagram name="Class Diagram" id="delivertrust-class-diagram">
+    <mxGraphModel dx="4884" dy="4368" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2850" pageHeight="2100" background="#ffffff" math="0" shadow="0">
+      <root>
+        <mxCell id="c0" />
+        <mxCell id="c1" parent="c0" />
+        <mxCell id="c_title" parent="c1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=24;fontColor=#1f2937;" value="&lt;b&gt;DeliverTrust — UML Class Diagram&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:14px&quot;&gt;Mô hình nghiệp vụ quản lý giao nhận và xác thực Blockchain&lt;/font&gt;" vertex="1">
+          <mxGeometry height="85" width="1040" x="60" y="-30" as="geometry" />
+        </mxCell>
+        <mxCell id="c_legend_entity" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=middle;" value="Domain entity" vertex="1">
+          <mxGeometry height="35" width="145" x="80" y="1667.5" as="geometry" />
+        </mxCell>
+        <mxCell id="c_legend_enum" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=center;verticalAlign=middle;" value="Enumeration" vertex="1">
+          <mxGeometry height="35" width="145" x="80" y="1740" as="geometry" />
+        </mxCell>
+        <mxCell id="c_legend_contract" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;align=center;verticalAlign=middle;" value="Smart contract" vertex="1">
+          <mxGeometry height="35" width="145" x="80" y="1813" as="geometry" />
+        </mxCell>
+        <mxCell id="c_role" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Role&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- name: String&lt;br&gt;- code: RoleCode&lt;br&gt;- description: String?&lt;br&gt;- createdAt: DateTime&lt;br&gt;- updatedAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ hasPermission(code): Boolean&lt;br&gt;+ assignPermission(permission): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="190" width="225" x="1677.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="c_permission" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Permission&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- name: String&lt;br&gt;- code: String&lt;br&gt;- module: String&lt;br&gt;- description: String?&lt;br&gt;- createdAt: DateTime&lt;br&gt;- updatedAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ isGrantedTo(role): Boolean&lt;/div&gt;" vertex="1">
+          <mxGeometry height="190" width="185" x="1717.5" y="932.5" as="geometry" />
+        </mxCell>
+        <mxCell id="c_role_permission" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;RolePermission&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- roleId: UUID&lt;br&gt;- permissionId: UUID&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ link(): void&lt;br&gt;+ unlink(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="125" width="160" x="1730" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="c_user" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;User&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- role: Role&lt;br&gt;- fullName: String&lt;br&gt;- email: String&lt;br&gt;- passwordHash: String&lt;br&gt;- phone: String?&lt;br&gt;- avatar: String?&lt;br&gt;- status: UserStatus&lt;br&gt;- createdAt: DateTime&lt;br&gt;- updatedAt: DateTime&lt;br&gt;- lastLoginAt: DateTime?&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ authenticate(): AuthToken&lt;br&gt;+ updateProfile(): void&lt;br&gt;+ changePassword(): void&lt;br&gt;+ hasPermission(code): Boolean&lt;/div&gt;" vertex="1">
+          <mxGeometry height="285" width="210" x="1245" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c_contact" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Contact&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- owner: User?&lt;br&gt;- type: ContactType&lt;br&gt;- name: String&lt;br&gt;- phone: String&lt;br&gt;- email: String?&lt;br&gt;- defaultAddress: Address?&lt;br&gt;- createdAt: DateTime&lt;br&gt;- updatedAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ canBeSender(): Boolean&lt;br&gt;+ canBeReceiver(): Boolean&lt;br&gt;+ addAddress(address): void&lt;br&gt;+ update(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="257.5" width="200" x="820" y="96.25" as="geometry" />
+        </mxCell>
+        <mxCell id="c_address" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Address&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- contact: Contact&lt;br&gt;- recipientName: String&lt;br&gt;- phone: String&lt;br&gt;- addressLine: String&lt;br&gt;- ward: String?&lt;br&gt;- district: String?&lt;br&gt;- province: String?&lt;br&gt;- latitude: Number?&lt;br&gt;- longitude: Number?&lt;br&gt;- isDefault: Boolean&lt;br&gt;- createdAt: DateTime&lt;br&gt;- updatedAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ validate(): Boolean&lt;br&gt;+ setDefault(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="285" width="200" x="450" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="c_audit" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#888888;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;AuditLog&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- user: User?&lt;br&gt;- action: String&lt;br&gt;- entityType: String&lt;br&gt;- entityId: UUID&lt;br&gt;- oldData: JSON?&lt;br&gt;- newData: JSON?&lt;br&gt;- ipAddress: String?&lt;br&gt;- createdAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ record(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="215" width="175" x="40" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="c_setting" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#888888;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;SystemSetting&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- key: String&lt;br&gt;- value: String?&lt;br&gt;- description: String?&lt;br&gt;- updatedAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ getValue(): String?&lt;br&gt;+ updateValue(value): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="250" width="185" x="40" y="1230" as="geometry" />
+        </mxCell>
+        <mxCell id="c_order" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Order&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- trackingCode: String&lt;br&gt;- qrCode: String&lt;br&gt;- sender: Contact&lt;br&gt;- receiver: Contact&lt;br&gt;- pickupAddress: Address&lt;br&gt;- deliveryAddress: Address&lt;br&gt;- serviceType: String&lt;br&gt;- codAmount: Money&lt;br&gt;- totalFee: Money&lt;br&gt;- status: OrderStatus&lt;br&gt;- createdBy: User&lt;br&gt;- expectedDeliveryDate: DateTime?&lt;br&gt;- note: String?&lt;br&gt;- cancelReason: String?&lt;br&gt;- createdAt: DateTime&lt;br&gt;- updatedAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ create(): Order&lt;br&gt;+ updateDetails(): void&lt;br&gt;+ changeStatus(status): void&lt;br&gt;+ cancel(reason): void&lt;br&gt;+ calculateFee(): Money&lt;br&gt;+ isLate(): Boolean&lt;/div&gt;" vertex="1">
+          <mxGeometry height="395" width="220" x="800" y="700" as="geometry" />
+        </mxCell>
+        <mxCell id="c_order_item" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;OrderItem&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- orderId: UUID&lt;br&gt;- itemName: String&lt;br&gt;- itemType: String?&lt;br&gt;- quantity: Integer&lt;br&gt;- weight: Number?&lt;br&gt;- length: Number?&lt;br&gt;- width: Number?&lt;br&gt;- height: Number?&lt;br&gt;- declaredValue: Money?&lt;br&gt;- note: String?&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ calculateVolume(): Number&lt;/div&gt;" vertex="1">
+          <mxGeometry height="235" width="175" x="350" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="c_order_status" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;OrderStatus&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- code: OrderStatusCode&lt;br&gt;- name: String&lt;br&gt;- description: String?&lt;br&gt;- isFinal: Boolean&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ isFinalStatus(): Boolean&lt;/div&gt;" vertex="1">
+          <mxGeometry height="155" width="175" x="360" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="c_delivery" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Delivery&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- order: Order&lt;br&gt;- deliveryStaff: User&lt;br&gt;- assignedBy: User&lt;br&gt;- assignedAt: DateTime&lt;br&gt;- receivedAt: DateTime?&lt;br&gt;- isReturn: Boolean&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ assign(staff): void&lt;br&gt;+ markReceived(): void&lt;br&gt;+ startReturn(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="215" width="175" x="1280" y="713" as="geometry" />
+        </mxCell>
+        <mxCell id="c_delivery_event" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;DeliveryEvent&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- delivery: Delivery&lt;br&gt;- order: Order&lt;br&gt;- fromStatus: OrderStatus?&lt;br&gt;- status: OrderStatus&lt;br&gt;- performedBy: User&lt;br&gt;- eventTime: DateTime&lt;br&gt;- locationLat: Number?&lt;br&gt;- locationLng: Number?&lt;br&gt;- note: String?&lt;br&gt;- imageUrl: String?&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ record(): DeliveryEvent&lt;br&gt;+ applyStatusChange(): void&lt;br&gt;+ toBlockchainPayload(): JSON&lt;/div&gt;" vertex="1">
+          <mxGeometry height="275" width="220" x="1260" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="c_delivery_attempt" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;DeliveryAttempt&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- deliveryId: UUID&lt;br&gt;- attemptNo: Integer&lt;br&gt;- attemptTime: DateTime&lt;br&gt;- result: DeliveryAttemptResult&lt;br&gt;- reasonFail: String?&lt;br&gt;- note: String?&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ recordSuccess(): void&lt;br&gt;+ recordFailure(reason): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="195" width="200" x="1530" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="c_cod" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;CodTransaction&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- order: Order&lt;br&gt;- amount: Money&lt;br&gt;- collectedBy: User?&lt;br&gt;- collectedAt: DateTime?&lt;br&gt;- status: CodTransactionStatus&lt;br&gt;- reconciledAt: DateTime?&lt;br&gt;- reconciledBy: User?&lt;br&gt;- note: String?&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ collect(): void&lt;br&gt;+ reconcile(by): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="230" width="200" x="990" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="c_blockchain_event" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;BlockchainEvent&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- order: Order&lt;br&gt;- eventType: BlockchainEventType&lt;br&gt;- eventDataHash: String&lt;br&gt;- previousHash: String?&lt;br&gt;- transactionHash: String?&lt;br&gt;- blockNumber: Integer?&lt;br&gt;- performedBy: User?&lt;br&gt;- chainTimestamp: DateTime?&lt;br&gt;- txStatus: BlockchainTxStatus&lt;br&gt;- createdAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ submit(): void&lt;br&gt;+ confirm(txHash, block): void&lt;br&gt;+ verifyIntegrity(): Boolean&lt;/div&gt;" vertex="1">
+          <mxGeometry height="280" width="220" x="520" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="c_contract" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;&lt;i&gt;DeliveryTracking&lt;/i&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«smart contract»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- eventsByTrackingCode: Map&lt;br&gt;- isOperator: Map&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ setOperator(address, allowed): void&lt;br&gt;+ recordEvent(code, type, actor, hash): Index&lt;br&gt;+ getEvents(code): DeliveryEvent[]&lt;br&gt;+ getEventCount(code): Integer&lt;br&gt;+ getLatestEvent(code): DeliveryEvent&lt;/div&gt;" vertex="1">
+          <mxGeometry height="195" width="270" x="495" y="1690" as="geometry" />
+        </mxCell>
+        <mxCell id="c_notification" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Notification&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- user: User&lt;br&gt;- order: Order?&lt;br&gt;- type: NotificationType&lt;br&gt;- title: String&lt;br&gt;- message: String&lt;br&gt;- isRead: Boolean&lt;br&gt;- createdAt: DateTime&lt;br&gt;- readAt: DateTime?&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ create(): Notification&lt;br&gt;+ markAsRead(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="230" width="175" x="1600" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="c_alert" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;Alert&lt;/b&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;- id: UUID&lt;br&gt;- order: Order?&lt;br&gt;- alertType: String&lt;br&gt;- title: String&lt;br&gt;- message: String&lt;br&gt;- details: JSON?&lt;br&gt;- detectedAt: DateTime&lt;br&gt;- status: AlertStatus&lt;br&gt;- resolvedAt: DateTime?&lt;br&gt;- resolvedBy: User?&lt;br&gt;- createdAt: DateTime&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;+ acknowledge(): void&lt;br&gt;+ resolve(by): void&lt;br&gt;+ dismiss(): void&lt;/div&gt;" vertex="1">
+          <mxGeometry height="275" width="175" x="790" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="c_contact_type" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;ContactType&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«enumeration»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;sender&lt;br&gt;receiver&lt;br&gt;both&lt;/div&gt;" vertex="1">
+          <mxGeometry height="130" width="130" x="1850" y="1740" as="geometry" />
+        </mxCell>
+        <mxCell id="c_user_status" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;UserStatus&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«enumeration»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;active&lt;br&gt;inactive&lt;br&gt;suspended&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="110" x="2000" y="1750" as="geometry" />
+        </mxCell>
+        <mxCell id="c_order_status_code" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;OrderStatusCode&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«enumeration»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;CREATED&lt;br&gt;PENDING_ASSIGNMENT&lt;br&gt;ASSIGNED&lt;br&gt;PICKED_UP&lt;br&gt;IN_WAREHOUSE&lt;br&gt;IN_TRANSIT&lt;br&gt;DELIVERING&lt;br&gt;DELIVERED&lt;br&gt;DELIVERY_FAILED&lt;br&gt;REDELIVERY&lt;br&gt;RETURNING&lt;br&gt;RETURNED&lt;br&gt;CANCELLED&lt;/div&gt;" vertex="1">
+          <mxGeometry height="235" width="175" x="1640" y="1637.5" as="geometry" />
+        </mxCell>
+        <mxCell id="c_delivery_attempt_result" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;DeliveryAttemptResult&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«enumeration»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;success&lt;br&gt;failed&lt;/div&gt;&lt;br&gt;&lt;b&gt;CodTransactionStatus&lt;/b&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;pending&lt;br&gt;collected&lt;br&gt;reconciled&lt;/div&gt;" vertex="1">
+          <mxGeometry height="170" width="175" x="1425" y="1702.5" as="geometry" />
+        </mxCell>
+        <mxCell id="c_tx_alert_status" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;BlockchainTxStatus&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«enumeration»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;pending&lt;br&gt;confirmed&lt;br&gt;failed&lt;/div&gt;&lt;br&gt;&lt;b&gt;AlertStatus&lt;/b&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;open&lt;br&gt;acknowledged&lt;br&gt;resolved&lt;br&gt;dismissed&lt;/div&gt;" vertex="1">
+          <mxGeometry height="195" width="175" x="1210" y="1677.5" as="geometry" />
+        </mxCell>
+        <mxCell id="c_blockchain_type" parent="c1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=center;verticalAlign=top;spacingTop=8;spacingLeft=8;spacingRight=8;" value="&lt;div&gt;&lt;b&gt;BlockchainEventType&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size:11px&quot;&gt;«enumeration»&lt;/font&gt;&lt;/div&gt;&lt;hr&gt;&lt;div align=&quot;left&quot;&gt;ORDER_CREATED&lt;br&gt;PICKED_UP&lt;br&gt;IN_WAREHOUSE&lt;br&gt;IN_TRANSIT&lt;br&gt;DELIVERED&lt;br&gt;DELIVERY_FAILED&lt;br&gt;RETURNED&lt;br&gt;CANCELLED&lt;/div&gt;" vertex="1">
+          <mxGeometry height="170" width="150" x="1020" y="1702.5" as="geometry" />
+        </mxCell>
+        <mxCell id="ce_role_user" edge="1" parent="c1" source="c_role" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_user" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1660" y="320" />
+              <mxPoint x="1660" y="320" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_role_rp" edge="1" parent="c1" source="c_role" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="c_role_permission" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1790" y="610" />
+              <mxPoint x="1790" y="610" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_permission_rp" edge="1" parent="c1" source="c_permission" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_role_permission" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1780" y="890" />
+              <mxPoint x="1780" y="890" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_user_contact" edge="1" parent="c1" source="c_user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;exitX=-0.001;exitY=0.339;exitDx=0;exitDy=0;exitPerimeter=0;" target="c_contact" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1060" y="202.58" />
+              <mxPoint x="1060" y="202.58" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_contact_address" edge="1" parent="c1" source="c_contact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_address" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="770" y="300" />
+              <mxPoint x="770" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_contact_order_sender" edge="1" parent="c1" source="c_contact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;exitX=0.301;exitY=0.998;exitDx=0;exitDy=0;exitPerimeter=0;" value="sender 1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880.17" y="700.42" />
+            </Array>
+            <mxPoint x="940" y="267.5" as="sourcePoint" />
+            <mxPoint x="880.19" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_contact_order_receiver" edge="1" parent="c1" source="c_contact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_order" value="receiver 1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1020" y="340" />
+              <mxPoint x="1020" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_address_order_pickup" edge="1" parent="c1" source="c_address" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="c_order" value="pickup 1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="600" y="610.06" />
+              <mxPoint x="830" y="610.06" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_address_order_delivery" edge="1" parent="c1" source="c_address" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_order" value="delivery 1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="710" />
+              <mxPoint x="840" y="710" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_order_status" edge="1" parent="c1" source="c_order" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#82b366;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_order_status" value="N : 1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="447.57" y="970" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_order_items" edge="1" parent="c1" source="c_order" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;entryX=0.999;entryY=0.843;entryDx=0;entryDy=0;entryPerimeter=0;exitX=0.003;exitY=0.552;exitDx=0;exitDy=0;exitPerimeter=0;" target="c_order_item" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="524.8" y="918.1" />
+            </Array>
+            <mxPoint x="800" y="917.5000000000005" as="sourcePoint" />
+            <mxPoint x="415" y="857.5000000000005" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_order_delivery" edge="1" parent="c1" source="c_order" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_delivery" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1330" y="880" />
+              <mxPoint x="1330" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_user_delivery_staff" edge="1" parent="c1" source="c_user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_delivery" value="staff 1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1247.42" y="400" />
+              <mxPoint x="1247.42" y="400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_delivery_event" edge="1" parent="c1" source="c_delivery" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_delivery_event" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1380" y="960" />
+              <mxPoint x="1380" y="960" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_delivery_attempt" edge="1" parent="c1" source="c_delivery" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_delivery_attempt" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1600" y="840" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_order_cod" edge="1" parent="c1" source="c_order" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;exitX=0.995;exitY=0.861;exitDx=0;exitDy=0;exitPerimeter=0;" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1060" y="1040.12" />
+            </Array>
+            <mxPoint x="1060" y="1095.0000000000005" as="sourcePoint" />
+            <mxPoint x="1060" y="1249.9999999999995" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_order_chain" edge="1" parent="c1" source="c_order" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#9673a6;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c_blockchain_event" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="630" y="1040" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_chain_contract" edge="1" parent="c1" source="c_blockchain_event" style="dashed=1;edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=open;strokeColor=#9673a6;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="c_contract" value="verify / record">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="630" y="1630" />
+              <mxPoint x="630" y="1630" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_user_notification" edge="1" parent="c1" source="c_user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_notification" value="1 : N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1550" y="170" />
+              <mxPoint x="1550" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ce_order_alert" edge="1" parent="c1" source="c_order" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;strokeColor=#6c8ebf;fontSize=10;strokeWidth=2;labelBackgroundColor=#ffffff" target="c_alert" value="0..N">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="1230" />
+              <mxPoint x="840" y="1230" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
