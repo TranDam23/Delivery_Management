@@ -1,6 +1,12 @@
 import type { DatabaseService } from "@/database/database.service";
 import type { PublicUser, User } from "@/models/schemas/User.schema";
 
+export interface PasswordUserRecord {
+  id: string;
+  password_hash: string;
+  status: User["status"];
+}
+
 export class UserRepository {
   constructor(private readonly database: DatabaseService) {}
 
@@ -28,6 +34,28 @@ export class UserRepository {
 
     if (error) throw new Error("Failed to load account");
     return data;
+  }
+
+  async findPasswordUserById(id: string): Promise<PasswordUserRecord | null> {
+    const { data, error } = await this.database
+      .getClient()
+      .from("users")
+      .select("id, password_hash, status")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw new Error("Failed to load account");
+    return data;
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<void> {
+    const { error } = await this.database
+      .getClient()
+      .from("users")
+      .update({ password_hash: passwordHash })
+      .eq("id", id);
+
+    if (error) throw new Error("Failed to update password");
   }
 
   async createUser(input: {

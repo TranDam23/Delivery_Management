@@ -42,6 +42,19 @@ export const loginSchema = z
   })
   .strict();
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "currentPassword is required"),
+    newPassword: z
+      .string()
+      .min(8, "newPassword must be at least 8 characters")
+      .regex(/[A-Z]/, "newPassword must contain an uppercase letter")
+      .regex(/[a-z]/, "newPassword must contain a lowercase letter")
+      .regex(/[0-9]/, "newPassword must contain a number"),
+    confirmPassword: z.string().min(1, "confirmPassword is required"),
+  })
+  .strict();
+
 export type RegisterValidationResult =
   | { success: true; data: RegisterReqBody }
   | { success: false; error: string };
@@ -62,6 +75,25 @@ export type LoginValidationResult =
 
 export function validateLoginInput(body: unknown): LoginValidationResult {
   const result = loginSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type ChangePasswordValidationResult =
+  | {
+      success: true;
+      data: import("@/requests/auth.requests").ChangePasswordReqBody;
+    }
+  | { success: false; error: string };
+
+export function validateChangePasswordInput(
+  body: unknown,
+): ChangePasswordValidationResult {
+  const result = changePasswordSchema.safeParse(body);
   if (result.success) return { success: true, data: result.data };
 
   const message = result.error.issues

@@ -10,3 +10,9 @@ export interface LoginReqBody {
   email: string;
   password: string;
 }
+
+export interface ChangePasswordReqBody {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
