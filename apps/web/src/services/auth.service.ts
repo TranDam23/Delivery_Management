@@ -1,6 +1,8 @@
 import { normalizeRoleCode, RoleCode, UserStatus } from "@delivery/shared";
 import {
   hashPassword,
+  getAuthTokenExpiresAt,
+  hashRefreshToken,
   signAuthToken,
   verifyAuthToken,
   verifyPassword,
@@ -10,12 +12,14 @@ import type { PublicUser } from "@/models/schemas/User.schema";
 import { AuthRepository } from "@/repositories/auth.repository";
 import { RoleRepository } from "@/repositories/role.repository";
 import { UserRepository } from "@/repositories/user.repository";
+import { RefreshTokenRepository } from "@/repositories/refresh-token.repository";
 
 export class AuthService {
   constructor(
     private readonly users?: UserRepository,
     private readonly roles?: RoleRepository,
     private readonly authRepository?: AuthRepository,
+    private readonly refreshTokenRepository?: RefreshTokenRepository,
   ) {}
 
   async register(input: RegisterReqBody): Promise<PublicUser> {
@@ -54,7 +58,9 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
   }> {
-    if (!this.authRepository) throw new Error("Authentication repository is not configured");
+    if (!this.authRepository || !this.refreshTokenRepository) {
+      throw new Error("Authentication repositories are not configured");
+    }
 
     const user = await this.authRepository.findUserByEmail(
       input.email.trim().toLowerCase(),
@@ -72,6 +78,23 @@ export class AuthService {
 
     await this.authRepository.updateLastLoginAt(user.id);
 
+    const accessToken = signAuthToken({
+      userId: user.id,
+      roleCode,
+      tokenType: "access",
+    });
+    const refreshToken = signAuthToken({
+      userId: user.id,
+      roleCode,
+      tokenType: "refresh",
+    });
+
+    await this.refreshTokenRepository.create({
+      user_id: user.id,
+      token_hash: hashRefreshToken(refreshToken),
+      expires_at: getAuthTokenExpiresAt(refreshToken),
+    });
+
     return {
       user: {
         id: user.id,
@@ -81,8 +104,8 @@ export class AuthService {
         status: user.status,
         roleCode,
       },
-      accessToken: signAuthToken({ userId: user.id, roleCode, tokenType: "access" }),
-      refreshToken: signAuthToken({ userId: user.id, roleCode, tokenType: "refresh" }),
+      accessToken,
+      refreshToken,
     };
   }
 

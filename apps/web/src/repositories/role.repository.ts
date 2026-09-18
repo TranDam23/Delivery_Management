@@ -19,4 +19,16 @@ export class RoleRepository {
     if (error) throw new Error("Failed to load role configuration");
     return data;
   }
+
+  async findById(id: string): Promise<RoleRecord | null> {
+    const { data, error } = await this.database
+      .getClient()
+      .from("roles")
+      .select("id, code")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw new Error("Failed to load role configuration");
+    return data;
+  }
 }

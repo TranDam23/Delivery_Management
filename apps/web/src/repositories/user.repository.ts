@@ -16,6 +16,20 @@ export class UserRepository {
     return data;
   }
 
+  async findById(id: string): Promise<PublicUser | null> {
+    const { data, error } = await this.database
+      .getClient()
+      .from("users")
+      .select(
+        "id, role_id, full_name, email, phone, avatar, status, created_at, updated_at, last_login_at",
+      )
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) throw new Error("Failed to load account");
+    return data;
+  }
+
   async createUser(input: {
     role_id: string;
     full_name: string;

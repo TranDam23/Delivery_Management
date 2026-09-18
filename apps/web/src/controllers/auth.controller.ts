@@ -4,6 +4,7 @@ import { RoleRepository } from "@/repositories/role.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { AuthService } from "@/services/auth.service";
 import { AuthRepository } from "@/repositories/auth.repository";
+import { RefreshTokenRepository } from "@/repositories/refresh-token.repository";
 import type { LoginReqBody, RegisterReqBody } from "@/requests/auth.requests";
 
 export async function registerController(input: RegisterReqBody) {
@@ -37,6 +38,7 @@ export async function loginController(input: LoginReqBody) {
       new UserRepository(database),
       new RoleRepository(database),
       new AuthRepository(database),
+      new RefreshTokenRepository(database),
     ).login(input);
 
     return ok({ message: "Login successful", ...result });
