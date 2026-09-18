@@ -10,10 +10,12 @@ interface AuthGuardProps {
   children: React.ReactNode;
   /** Neu co truyen, chi cho phep dung mot vai tro tren trang hien tai. */
   allowedRole?: RoleCode;
+  /** Cho phep nhieu vai tro dung chung mot man hinh. */
+  allowedRoles?: readonly RoleCode[];
 }
 
 /** Bao ve cac trang client bang JWT va dong bo lai role tu database. */
-export function AuthGuard({ children, allowedRole }: AuthGuardProps): React.JSX.Element {
+export function AuthGuard({ children, allowedRole, allowedRoles }: AuthGuardProps): React.JSX.Element {
   const router = useRouter();
   const pathname = usePathname() ?? "/";
   const [ready, setReady] = useState(false);
@@ -31,7 +33,12 @@ export function AuthGuard({ children, allowedRole }: AuthGuardProps): React.JSX.
         const result = await apiFetch<{ user: AuthenticatedUser }>("/api/auth/me");
         if (!mounted) return;
 
-        if (allowedRole && result.user.roleCode !== allowedRole) {
+        const roleNotAllowed = allowedRole
+          ? result.user.roleCode !== allowedRole
+          : allowedRoles
+            ? !allowedRoles.includes(result.user.roleCode)
+            : false;
+        if (roleNotAllowed) {
           router.replace(roleHomePath(result.user.roleCode));
           return;
         }
@@ -48,7 +55,7 @@ export function AuthGuard({ children, allowedRole }: AuthGuardProps): React.JSX.
     return () => {
       mounted = false;
     };
-  }, [allowedRole, pathname, router]);
+  }, [allowedRole, allowedRoles, pathname, router]);
 
   if (!ready) {
     return (

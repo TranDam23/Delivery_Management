@@ -15,12 +15,18 @@ const optionalPhoneSchema = z.preprocess(
     .optional(),
 );
 
+const optionalProvinceSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().max(120, "Tỉnh/thành phố quá dài").nullable().optional(),
+);
+
 /** Các trường cá nhân được phép cập nhật; role/permission không nằm trong schema này. */
 export const updateProfileSchema = z
   .object({
     full_name: z.string().trim().min(2, "Họ tên phải có ít nhất 2 ký tự").max(120, "Họ tên quá dài").optional(),
     email: z.string().trim().toLowerCase().email("Email không hợp lệ").max(255, "Email quá dài").optional(),
     phone: optionalPhoneSchema,
+    province: optionalProvinceSchema,
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "Chưa có thông tin nào để cập nhật");

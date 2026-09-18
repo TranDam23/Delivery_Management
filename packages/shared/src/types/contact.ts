@@ -1,4 +1,4 @@
-import { ContactType } from "../enums";
+import { ContactType, type LocationSource } from "../enums";
 
 export interface Contact {
   id: string;
@@ -23,6 +23,11 @@ export interface Address {
   province: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** Google Places place_id nếu địa chỉ được chọn từ gợi ý. */
+  place_id: string | null;
+  formatted_address: string | null;
+  location_source: LocationSource | null;
+  geocoded_at: string | null;
   is_default: boolean;
   created_at: string;
   updated_at: string;

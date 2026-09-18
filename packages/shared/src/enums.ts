@@ -16,15 +16,68 @@ export const OrderStatusCode = {
 } as const;
 export type OrderStatusCode = (typeof OrderStatusCode)[keyof typeof OrderStatusCode];
 
+export const WarehouseStatusCode = {
+  ACTIVE: "active",
+  INACTIVE: "inactive",
+} as const;
+export type WarehouseStatusCode = (typeof WarehouseStatusCode)[keyof typeof WarehouseStatusCode];
+
+export const WarehouseLevelCode = {
+  /** Trung tâm khai thác/phân loại phục vụ nhiều tỉnh trong một vùng. */
+  REGIONAL: "REGIONAL",
+  PROVINCE: "PROVINCE",
+  COMMUNE: "COMMUNE",
+} as const;
+export type WarehouseLevelCode = (typeof WarehouseLevelCode)[keyof typeof WarehouseLevelCode];
+
+export const ShipmentLegType = {
+  PICKUP: "PICKUP",
+  TRANSFER: "TRANSFER",
+  LAST_MILE: "LAST_MILE",
+} as const;
+export type ShipmentLegType = (typeof ShipmentLegType)[keyof typeof ShipmentLegType];
+
+export const ShipmentLegStatusCode = {
+  PENDING: "PENDING",
+  ASSIGNED: "ASSIGNED",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type ShipmentLegStatusCode =
+  (typeof ShipmentLegStatusCode)[keyof typeof ShipmentLegStatusCode];
+
+export const WarehouseEventType = {
+  INBOUND: "INBOUND",
+  OUTBOUND: "OUTBOUND",
+} as const;
+export type WarehouseEventType = (typeof WarehouseEventType)[keyof typeof WarehouseEventType];
+
+/** Kết quả kiểm tình trạng kiện hàng khi nhập kho. */
+export const PackageCondition = {
+  INTACT: "INTACT",
+  DAMAGED: "DAMAGED",
+} as const;
+export type PackageCondition = (typeof PackageCondition)[keyof typeof PackageCondition];
+
 /** Cac moc quan trong duoc ghi len Blockchain (khop voi blockchain_events.event_type) */
 export const BlockchainEventType = {
   ORDER_CREATED: "ORDER_CREATED",
   PICKED_UP: "PICKED_UP",
+  /** Shipper không lấy được hàng tại địa chỉ người gửi. */
+  PICKUP_FAILED: "PICKUP_FAILED",
   IN_WAREHOUSE: "IN_WAREHOUSE",
   IN_TRANSIT: "IN_TRANSIT",
+  /** Shipper đã nhận hàng tại kho phát và bắt đầu giao. */
+  DELIVERING: "DELIVERING",
   DELIVERED: "DELIVERED",
   DELIVERY_FAILED: "DELIVERY_FAILED",
+  /** Đơn hết số lần giao, bắt đầu tuyến hoàn về người gửi. */
+  RETURNING: "RETURNING",
   RETURNED: "RETURNED",
+  /** Người nhận xác nhận đã nhận hàng trên hệ thống. */
+  RECEIVER_CONFIRMED: "RECEIVER_CONFIRMED",
   CANCELLED: "CANCELLED",
 } as const;
 export type BlockchainEventType = (typeof BlockchainEventType)[keyof typeof BlockchainEventType];
@@ -90,6 +143,8 @@ export const RoleCode = {
   ADMIN: "ADMIN",
   DISPATCHER: "DISPATCHER",
   DELIVERY_STAFF: "DELIVERY_STAFF",
+  /** Tai khoan van hanh nhap/xuat tai mot kho cu the. */
+  WAREHOUSE_STAFF: "WAREHOUSE_STAFF",
   /** Tai khoan khach hang co the vua gui vua nhan hang. */
   CUSTOMER: "CUSTOMER",
 } as const;
@@ -101,3 +156,16 @@ export const LegacyRoleCode = {
   RECEIVER: "RECEIVER",
 } as const;
 export type LegacyRoleCode = (typeof LegacyRoleCode)[keyof typeof LegacyRoleCode];
+
+/** Nguồn tọa độ của một địa chỉ, dùng để đánh giá độ tin cậy khi hiển thị bản đồ. */
+export const LocationSource = {
+  /** Người dùng tự kéo ghim trên bản đồ. */
+  MAP_PIN: "MAP_PIN",
+  /** Chọn từ gợi ý Google Places (có place_id). */
+  PLACES: "PLACES",
+  /** Hệ thống geocode từ chuỗi địa chỉ, độ chính xác thấp hơn. */
+  GEOCODED: "GEOCODED",
+  /** Lấy từ GPS thiết bị tại chỗ. */
+  DEVICE_GPS: "DEVICE_GPS",
+} as const;
+export type LocationSource = (typeof LocationSource)[keyof typeof LocationSource];

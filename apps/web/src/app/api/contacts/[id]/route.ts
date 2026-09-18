@@ -16,10 +16,10 @@ const CONTACT_SELECT =
   "id, user_id, type, name, phone, email, default_address_id, created_at, updated_at, " +
   "default_address:addresses!contacts_default_address_id_fkey(" +
   "id, contact_id, recipient_name, phone, address_line, ward, district, province, " +
-  "latitude, longitude, is_default, created_at, updated_at)";
+  "latitude, longitude, place_id, formatted_address, location_source, is_default, created_at, updated_at)";
 
 function seesAllContacts(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
+  return roleCode === RoleCode.ADMIN;
 }
 
 function canManageContacts(roleCode: RoleCode): boolean {
@@ -47,6 +47,7 @@ async function getAccessibleContact(contactId: string, userId: string, roleCode:
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const { id } = await params;
   const access = await getAccessibleContact(id, auth.userId, auth.roleCode);

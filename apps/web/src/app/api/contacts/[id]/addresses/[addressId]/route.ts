@@ -3,13 +3,18 @@ import { RoleCode, updateAddressSchema } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
+import { addressGeoChanges } from "@/lib/geo";
 
 interface RouteParams {
   params: Promise<{ id: string; addressId: string }>;
 }
 
 function seesAllContacts(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
+  return roleCode === RoleCode.ADMIN;
+}
+
+function canManageContacts(roleCode: RoleCode): boolean {
+  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER;
 }
 
 async function getAccessibleAddress(contactId: string, addressId: string, userId: string, roleCode: RoleCode) {
@@ -41,6 +46,7 @@ async function getAccessibleAddress(contactId: string, addressId: string, userId
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const { id, addressId } = await params;
   const access = await getAccessibleAddress(id, addressId, auth.userId, auth.roleCode);
@@ -70,7 +76,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   changes.is_default = makeDefault || access.address?.is_default === true;
   const { data: updated, error } = await access.supabase
     .from("addresses")
-    .update(changes)
+    .update({ ...changes, ...addressGeoChanges(parsed.data) })
     .eq("id", addressId)
     .select("*")
     .single();
@@ -97,6 +103,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const { id, addressId } = await params;
   const access = await getAccessibleAddress(id, addressId, auth.userId, auth.roleCode);

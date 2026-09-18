@@ -1,22 +1,12 @@
 import type { NextRequest } from "next/server";
-import { normalizePhone, RoleCode } from "@delivery/shared";
+import { ShipmentLegType } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
+import { checkOrderViewAccess } from "@/lib/order-access";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
-}
-
-type OrderAccess = {
-  id: string;
-  created_by: string;
-  sender: { user_id: string | null; phone: string } | null;
-  receiver: { user_id: string | null; phone: string } | null;
-};
-
-function canViewAllOrders(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
 }
 
 /** GET /api/orders/:id — chi tiet don hang + hang hoa + hanh trinh. */
@@ -27,57 +17,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const supabase = getSupabaseServiceClient();
 
-  // API dung service role nen phai kiem tra quyen truoc khi tra ve chi tiet.
-  // Khach hang chi duoc xem don minh tao, don gan voi contact cua minh; nhan
-  // vien giao hang chi duoc xem don dang duoc phan cong cho minh.
-  const { data: accessRaw, error: accessError } = await supabase
-    .from("orders")
-    .select(
-      "id, created_by, sender:contacts!orders_sender_id_fkey(user_id), receiver:contacts!orders_receiver_id_fkey(user_id)",
-    )
-    .eq("id", id)
-    .maybeSingle();
-  const access = accessRaw as OrderAccess | null;
-
-  if (accessError) return fail(accessError.message, 500);
-  if (!access) return fail("Order not found", 404);
-
-  const { data: viewer, error: viewerError } = await supabase
-    .from("users")
-    .select("phone")
-    .eq("id", auth.userId)
-    .maybeSingle();
-  if (viewerError) return fail(viewerError.message, 500);
-  if (!viewer) return fail("Unauthorized", 401);
-
-  const viewerPhone = typeof viewer.phone === "string" ? normalizePhone(viewer.phone) : "";
-  const isPhoneParticipant =
-    viewerPhone.length > 0 &&
-    (normalizePhone(access.sender?.phone ?? "") === viewerPhone ||
-      normalizePhone(access.receiver?.phone ?? "") === viewerPhone);
-
-  const isCustomerParticipant =
-    access.created_by === auth.userId ||
-    access.sender?.user_id === auth.userId ||
-    access.receiver?.user_id === auth.userId ||
-    isPhoneParticipant;
-
-  let isAssignedDeliveryStaff = false;
-  if (auth.roleCode === RoleCode.DELIVERY_STAFF) {
-    const { data: delivery, error: deliveryError } = await supabase
-      .from("deliveries")
-      .select("id")
-      .eq("order_id", id)
-      .eq("delivery_staff_id", auth.userId)
-      .limit(1)
-      .maybeSingle();
-    if (deliveryError) return fail(deliveryError.message, 500);
-    isAssignedDeliveryStaff = Boolean(delivery);
-  }
-
-  if (!canViewAllOrders(auth.roleCode) && !isCustomerParticipant && !isAssignedDeliveryStaff) {
-    return fail("Forbidden", 403);
-  }
+  const access = await checkOrderViewAccess(supabase, auth, id);
+  if (!access.allowed) return fail(access.error, access.status);
+  const { canConfirmReceipt } = access;
 
   const { data: order, error } = await supabase
     .from("orders")
@@ -86,6 +28,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
        created_at, updated_at,
        order_statuses(code, name, is_final),
        order_items(*),
+       pickup_warehouse:warehouses!orders_pickup_warehouse_id_fkey(id, code, name, ward, district, province, warehouse_level),
+       delivery_warehouse:warehouses!orders_delivery_warehouse_id_fkey(id, code, name, ward, district, province, warehouse_level),
        sender:contacts!orders_sender_id_fkey(id, name, phone),
        receiver:contacts!orders_receiver_id_fkey(id, name, phone),
        pickup_address:addresses!orders_pickup_address_id_fkey(*),
@@ -99,9 +43,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const { data: events } = await supabase
     .from("delivery_events")
-    .select("id, event_time, location_lat, location_lng, note, image_url, order_statuses(code, name)")
+    .select("id, event_time, location_lat, location_lng, note, image_url, order_statuses!delivery_events_status_id_fkey(code, name)")
     .eq("order_id", id)
     .order("event_time", { ascending: true });
 
-  return ok({ order, events: events ?? [] });
+  const { data: lastMileLeg, error: lastMileLegError } = await supabase
+    .from("shipment_legs")
+    .select("id")
+    .eq("order_id", id)
+    .eq("leg_type", ShipmentLegType.LAST_MILE)
+    .eq("is_return", false)
+    .order("sequence_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastMileLegError) return fail(lastMileLegError.message, 500);
+
+  let receiverConfirmation: { confirmedAt: string | null } = { confirmedAt: null };
+  if (lastMileLeg) {
+    const { data: delivery, error: deliveryError } = await supabase
+      .from("deliveries")
+      .select("received_at")
+      .eq("shipment_leg_id", lastMileLeg.id)
+      .maybeSingle();
+    if (deliveryError) return fail(deliveryError.message, 500);
+    receiverConfirmation = { confirmedAt: delivery?.received_at ?? null };
+  }
+
+  return ok({ order, events: events ?? [], receiverConfirmation, canConfirmReceipt });
 }

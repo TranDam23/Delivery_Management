@@ -23,11 +23,16 @@ export type OrderDirection = "sent" | "received";
 
 const STATUS_OPTIONS = [
   { value: OrderStatusCode.CREATED, label: "Đã tạo đơn" },
+  { value: OrderStatusCode.PENDING_ASSIGNMENT, label: "Chờ phân công" },
+  { value: OrderStatusCode.ASSIGNED, label: "Đã phân công" },
   { value: OrderStatusCode.PICKED_UP, label: "Đã lấy hàng" },
+  { value: OrderStatusCode.IN_WAREHOUSE, label: "Tại kho" },
   { value: OrderStatusCode.IN_TRANSIT, label: "Đang vận chuyển" },
   { value: OrderStatusCode.DELIVERING, label: "Đang giao hàng" },
   { value: OrderStatusCode.DELIVERED, label: "Giao thành công" },
   { value: OrderStatusCode.DELIVERY_FAILED, label: "Giao thất bại" },
+  { value: OrderStatusCode.REDELIVERY, label: "Giao lại" },
+  { value: OrderStatusCode.RETURNING, label: "Đang hoàn hàng" },
   { value: OrderStatusCode.RETURNED, label: "Đã hoàn hàng" },
   { value: OrderStatusCode.CANCELLED, label: "Đã hủy" },
 ];

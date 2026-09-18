@@ -1,4 +1,5 @@
 import { RoleCode, type RoleCode as RoleCodeType } from "@delivery/shared";
+import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
@@ -10,22 +11,21 @@ import {
   ClipboardList,
   Clock3,
   FileCheck2,
-  Home,
   LayoutDashboard,
   MapPin,
-  Package,
   PackageCheck,
   Route,
-  ScanLine,
   Search,
   Settings,
   ShieldCheck,
   Truck,
   UserRound,
   Users,
+  Warehouse as WarehouseIcon,
   WalletCards,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { DeliveryHomePage } from "@/components/delivery/delivery-home";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { CustomerHome } from "@/components/dashboard/customer-home";
@@ -38,11 +38,12 @@ interface RoleDashboardProps {
   description: string;
 }
 
-interface NavItem {
+export interface NavItem {
   label: string;
   icon: LucideIcon;
   active?: boolean;
   badge?: string;
+  href?: string;
 }
 
 interface Metric {
@@ -53,10 +54,11 @@ interface Metric {
   tone: "yellow" | "green" | "blue" | "red";
 }
 
-const ADMIN_NAV: NavItem[] = [
-  { label: "Tổng quan", icon: LayoutDashboard, active: true },
+export const ADMIN_NAV: NavItem[] = [
+  { label: "Tổng quan", icon: LayoutDashboard, active: true, href: "/dashboard/admin" },
   { label: "Đơn hàng", icon: ClipboardList, badge: "1.248" },
-  { label: "Người dùng", icon: Users },
+  { label: "Kho & tuyến", icon: MapPin, href: "/dashboard/admin/warehouses" },
+  { label: "Người dùng", icon: Users, href: "/dashboard/admin/users" },
   { label: "Nhân viên", icon: UserRound },
   { label: "Tài xế", icon: Truck },
   { label: "Blockchain", icon: ShieldCheck },
@@ -67,19 +69,27 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Cài đặt", icon: Settings },
 ];
 
-const DISPATCHER_NAV: NavItem[] = [
-  { label: "Tổng quan", icon: LayoutDashboard, active: true },
-  { label: "Đơn hàng", icon: ClipboardList, badge: "18" },
-  { label: "Chờ phân công", icon: Clock3, badge: "12" },
+export const DISPATCHER_NAV: NavItem[] = [
+  { label: "Tổng quan", icon: LayoutDashboard, active: true, href: "/dashboard/dispatcher" },
+  { label: "Đơn hàng", icon: ClipboardList },
+  { label: "Kho & tuyến", icon: MapPin, href: "/dashboard/dispatcher/warehouses" },
+  { label: "Chờ phân công", icon: Clock3 },
   { label: "Giao nhận", icon: PackageCheck },
   { label: "Tài xế", icon: Truck },
   { label: "Theo dõi realtime", icon: Activity },
-  { label: "Hàng đặc biệt", icon: Package },
-  { label: "COD", icon: WalletCards },
+  // Hang dac biet va doi soat COD thuoc cac bo phan nghiep vu chuyen trach;
+  // dieu phoi vien chi nhan canh bao de phoi hop khi phat sinh bat thuong.
   { label: "Hoàn hàng", icon: Route },
-  { label: "Cảnh báo", icon: AlertTriangle, badge: "4" },
+  { label: "Cảnh báo", icon: AlertTriangle },
   { label: "Thông báo", icon: Bell },
-  { label: "Tài khoản", icon: Settings },
+  { label: "Tài khoản", icon: Settings, href: "/dashboard/dispatcher/account" },
+];
+
+export const WAREHOUSE_STAFF_NAV: NavItem[] = [
+  { label: "Tổng quan", icon: LayoutDashboard, href: "/dashboard/warehouse" },
+  { label: "Vận hành kho", icon: WarehouseIcon, href: "/dashboard/warehouse/operations" },
+  { label: "Thông báo", icon: Bell },
+  { label: "Tài khoản", icon: Settings, href: "/dashboard/warehouse/account" },
 ];
 
 const METRIC_ICON_TONE: Record<Metric["tone"], string> = {
@@ -135,7 +145,15 @@ function Brand(): React.JSX.Element {
   );
 }
 
-function DesktopSidebar({ navItems, roleCode }: { navItems: NavItem[]; roleCode: RoleCodeType }): React.JSX.Element {
+export function DesktopSidebar({
+  navItems,
+  roleCode,
+  activeLabel,
+}: {
+  navItems: NavItem[];
+  roleCode: RoleCodeType;
+  activeLabel?: string;
+}): React.JSX.Element {
   return (
     <aside className="hidden min-h-screen w-[246px] shrink-0 flex-col border-r border-dt-border bg-dt-side lg:flex">
       <div className="px-5 pb-5 pt-6">
@@ -147,11 +165,12 @@ function DesktopSidebar({ navItems, roleCode }: { navItems: NavItem[]; roleCode:
         <nav className="mt-3 space-y-1" aria-label={`Điều hướng ${ROLE_LABEL[roleCode]}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
-            return (
+            const active = activeLabel ? item.label === activeLabel : item.active;
+            const content = (
               <div
                 key={item.label}
                 className={`flex items-center justify-between rounded-md px-3 py-2.5 text-[11px] transition ${
-                  item.active ? "bg-dt-yellow text-dt-bg" : "text-dt-muted hover:bg-dt-panel2 hover:text-dt-text"
+                  active ? "bg-dt-yellow text-dt-bg" : "text-dt-muted hover:bg-dt-panel2 hover:text-dt-text"
                 }`}
               >
                 <span className="flex min-w-0 items-center gap-3">
@@ -159,12 +178,13 @@ function DesktopSidebar({ navItems, roleCode }: { navItems: NavItem[]; roleCode:
                   <span className="truncate">{item.label}</span>
                 </span>
                 {item.badge ? (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${item.active ? "bg-black/15 text-dt-bg" : "bg-dt-panel text-dt-muted"}`}>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-black/15 text-dt-bg" : "bg-dt-panel text-dt-muted"}`}>
                     {item.badge}
                   </span>
                 ) : null}
               </div>
             );
+            return item.href ? <Link key={item.label} href={item.href} className="block">{content}</Link> : content;
           })}
         </nav>
       </div>
@@ -179,6 +199,30 @@ function DesktopSidebar({ navItems, roleCode }: { navItems: NavItem[]; roleCode:
         <LogoutButton />
       </div>
     </aside>
+  );
+}
+
+/** Khung chung cho các trang nghiệp vụ của admin/điều phối viên. */
+export function RolePageShell({
+  roleCode,
+  activeLabel,
+  children,
+}: {
+  roleCode: RoleCodeType;
+  activeLabel: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const navItems = roleCode === RoleCode.ADMIN
+    ? ADMIN_NAV
+    : roleCode === RoleCode.DISPATCHER
+      ? DISPATCHER_NAV
+      : WAREHOUSE_STAFF_NAV;
+
+  return (
+    <div className="flex min-h-screen bg-dt-bg text-dt-text">
+      <DesktopSidebar navItems={navItems} roleCode={roleCode} activeLabel={activeLabel} />
+      <main className="min-w-0 flex-1">{children}</main>
+    </div>
   );
 }
 
@@ -423,68 +467,13 @@ function DispatcherHome(props: RoleDashboardProps): React.JSX.Element {
   );
 }
 
-function DeliveryHome({ heading, subtitle, description }: Omit<RoleDashboardProps, "roleCode">): React.JSX.Element {
-  const mobileNav = [
-    { label: "Trang chủ", icon: Home, active: true },
-    { label: "Đơn hàng", icon: ClipboardList },
-    { label: "Quét QR", icon: ScanLine },
-    { label: "Thông báo", icon: Bell },
-    { label: "Tài khoản", icon: UserRound },
-  ];
-
-  return (
-    <div className="min-h-screen bg-dt-bg text-dt-text">
-      <div className="mx-auto flex min-h-screen max-w-[430px] flex-col border-x border-dt-border bg-[#111216]">
-        <header className="flex items-center justify-between border-b border-dt-border px-5 py-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-dt-yellow text-[10px] font-bold text-dt-bg">TX</span>
-            <div><p className="text-[11px] font-medium">Xin chào, Minh Đức</p><p className="mt-0.5 text-[9px] text-dt-muted">{heading}</p></div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button type="button" aria-label="Thông báo" className="flex h-8 w-8 items-center justify-center rounded-full text-dt-muted hover:bg-dt-panel2 hover:text-dt-text"><Bell size={16} /></button>
-            <div className="w-[74px]"><LogoutButton /></div>
-          </div>
-        </header>
-        <main className="flex-1 px-5 pb-6 pt-6">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-dt-yellow">Ca sáng · 09:45</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Sẵn sàng giao hàng?</h1>
-            <p className="mt-2 text-[11px] leading-5 text-dt-muted">{subtitle}</p>
-          </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <div className="rounded-dt border border-dt-border bg-dt-panel p-4"><p className="text-[10px] text-dt-muted">Đơn trong ngày</p><p className="mt-3 text-2xl font-semibold">08</p><p className="mt-1 text-[10px] text-dt-green">+2 đơn mới</p></div>
-            <div className="rounded-dt border border-dt-border bg-dt-panel p-4"><p className="text-[10px] text-dt-muted">Đã hoàn tất</p><p className="mt-3 text-2xl font-semibold">05</p><p className="mt-1 text-[10px] text-dt-muted">62,5% tiến độ</p></div>
-          </div>
-
-          <section className="mt-4 rounded-dt border border-dt-yellow/35 bg-dt-panel p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-dt-yellow">Đơn tiếp theo</p><p className="mt-2 text-base font-semibold">ORD-2026-00124</p></div><StatusPill tone="warning">Đang chờ lấy hàng</StatusPill></div>
-            <div className="mt-4 space-y-3 border-t border-dt-border pt-4">
-              <p className="flex items-start gap-2 text-[11px] text-dt-text"><UserRound className="mt-0.5 shrink-0 text-dt-muted" size={14} />Người nhận: Nguyễn Hoàng Nam · 090 123 4567</p>
-              <p className="flex items-start gap-2 text-[11px] leading-5 text-dt-text"><MapPin className="mt-0.5 shrink-0 text-dt-muted" size={14} />42 Nguyễn Thái Học, Ba Đình, Hà Nội</p>
-              <p className="flex items-center gap-2 text-[11px] text-dt-text"><WalletCards className="text-dt-muted" size={14} />COD cần thu: <span className="font-semibold text-dt-yellow">450.000đ</span></p>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" className="flex items-center justify-center gap-1.5 rounded-md bg-dt-yellow py-2.5 text-[10px] font-semibold text-dt-bg"><Route size={14} />Bắt đầu giao</button><button type="button" className="flex items-center justify-center gap-1.5 rounded-md border border-dt-border py-2.5 text-[10px] text-dt-muted"><MapPin size={14} />Xem bản đồ</button></div>
-          </section>
-
-          <div className="mt-4 rounded-dt border border-dt-border bg-dt-panel2 p-4"><div className="flex items-center gap-3"><Clock3 className="text-dt-yellow" size={17} /><div><p className="text-[11px] font-medium">Nhắc việc trong ca</p><p className="mt-1 text-[10px] leading-4 text-dt-muted">Quét mã kiện hàng trước khi rời điểm lấy hàng.</p></div></div></div>
-          <p className="mt-4 text-[10px] leading-4 text-dt-muted">{description}</p>
-        </main>
-        <nav className="sticky bottom-0 grid grid-cols-5 border-t border-dt-border bg-[#15161b]/95 px-2 py-2 backdrop-blur" aria-label="Điều hướng nhân viên giao nhận">
-          {mobileNav.map((item) => { const Icon = item.icon; return <div key={item.label} className={`flex flex-col items-center gap-1 py-1.5 text-[9px] ${item.active ? "text-dt-yellow" : "text-dt-muted"}`}><Icon size={16} strokeWidth={1.8} /><span>{item.label}</span></div>; })}
-        </nav>
-      </div>
-    </div>
-  );
-}
-
 /** Trang home theo role, trong do CUSTOMER dung dashboard chung cho luong gui/nhan. */
 export function RoleDashboard({ roleCode, heading, subtitle, description }: RoleDashboardProps): React.JSX.Element {
   return (
     <AuthGuard allowedRole={roleCode}>
       {roleCode === RoleCode.ADMIN ? <AdminHome roleCode={roleCode} heading={heading} subtitle={subtitle} description={description} /> : null}
       {roleCode === RoleCode.DISPATCHER ? <DispatcherHome roleCode={roleCode} heading={heading} subtitle={subtitle} description={description} /> : null}
-      {roleCode === RoleCode.DELIVERY_STAFF ? <DeliveryHome heading={heading} subtitle={subtitle} description={description} /> : null}
+      {roleCode === RoleCode.DELIVERY_STAFF ? <DeliveryHomePage /> : null}
       {roleCode === RoleCode.CUSTOMER ? <CustomerHome /> : null}
     </AuthGuard>
   );

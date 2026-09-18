@@ -4,8 +4,9 @@
 
 insert into roles (name, code, description) values
   ('Quan tri vien', 'ADMIN', 'Toan quyen quan ly he thong'),
-  ('Dieu phoi vien', 'DISPATCHER', 'Tao don, phan cong nhan vien giao hang, doi soat COD'),
+  ('Dieu phoi vien', 'DISPATCHER', 'Theo doi don theo pham vi, lap tuyen, phan cong va giam sat van hanh'),
   ('Nhan vien giao hang', 'DELIVERY_STAFF', 'Quet QR, cap nhat trang thai giao nhan'),
+  ('Nhan vien kho', 'WAREHOUSE_STAFF', 'Xac nhan nhap xuat kho va ban giao hang hoa tai kho duoc phan cong'),
   ('Khach hang', 'CUSTOMER', 'Tao don, quan ly don gui va don nhan, tra cuu hanh trinh');
 
 insert into permissions (name, code, module, description) values
@@ -18,7 +19,11 @@ insert into permissions (name, code, module, description) values
   ('Quan ly nguoi dung', 'USER_MANAGE', 'users', 'Tao/sua/khoa tai khoan nguoi dung'),
   ('Doi soat COD', 'COD_RECONCILE', 'cod', 'Doi soat tien thu ho COD'),
   ('Xem bao cao thong ke', 'REPORT_VIEW', 'reports', 'Xem thong ke, bao cao van hanh'),
-  ('Xac minh Blockchain', 'BLOCKCHAIN_VERIFY', 'blockchain', 'Tra cuu, xac minh du lieu tren blockchain');
+  ('Xac minh Blockchain', 'BLOCKCHAIN_VERIFY', 'blockchain', 'Tra cuu, xac minh du lieu tren blockchain'),
+  ('Xem danh muc kho', 'WAREHOUSE_VIEW', 'warehouses', 'Xem kho va diem thu gom/phat trong pham vi duoc cap'),
+  ('Quan ly danh muc kho', 'WAREHOUSE_MANAGE', 'warehouses', 'Tao, cap nhat, kich hoat hoac tam dung kho'),
+  ('Lap tuyen van chuyen', 'ROUTE_PLAN', 'shipments', 'Phan kho va chia don hang thanh cac chang van chuyen'),
+  ('Ghi nhan nhap xuat kho', 'WAREHOUSE_SCAN', 'warehouses', 'Quet ma va ghi nhan moc nhap kho/xuat kho');
 
 -- ADMIN: full quyen
 insert into role_permissions (role_id, permission_id)
@@ -28,13 +33,19 @@ select r.id, p.id from roles r cross join permissions p where r.code = 'ADMIN';
 insert into role_permissions (role_id, permission_id)
 select r.id, p.id from roles r, permissions p
 where r.code = 'DISPATCHER'
-  and p.code in ('ORDER_VIEW', 'ORDER_CREATE', 'ORDER_UPDATE', 'ORDER_CANCEL', 'DELIVERY_ASSIGN', 'COD_RECONCILE', 'REPORT_VIEW', 'BLOCKCHAIN_VERIFY');
+  and p.code in ('ORDER_VIEW', 'DELIVERY_ASSIGN', 'REPORT_VIEW', 'BLOCKCHAIN_VERIFY', 'WAREHOUSE_VIEW', 'ROUTE_PLAN');
 
 -- DELIVERY_STAFF
 insert into role_permissions (role_id, permission_id)
 select r.id, p.id from roles r, permissions p
 where r.code = 'DELIVERY_STAFF'
   and p.code in ('ORDER_VIEW', 'DELIVERY_UPDATE_STATUS', 'BLOCKCHAIN_VERIFY');
+
+-- WAREHOUSE_STAFF
+insert into role_permissions (role_id, permission_id)
+select r.id, p.id from roles r, permissions p
+where r.code = 'WAREHOUSE_STAFF'
+  and p.code in ('ORDER_VIEW', 'WAREHOUSE_VIEW', 'WAREHOUSE_SCAN');
 
 -- CUSTOMER: cung mot tai khoan cho ca luong gui va nhan
 insert into role_permissions (role_id, permission_id)

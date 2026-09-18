@@ -1,16 +1,18 @@
 import type { NextRequest } from "next/server";
-import { normalizeRoleCode, updateProfileSchema, type AuthenticatedUser } from "@delivery/shared";
+import { normalizeRoleCode, RoleCode, updateProfileSchema, type AuthenticatedUser } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 
-const USER_SELECT = "id, full_name, email, phone, avatar, status, roles(code)";
+const USER_SELECT = "id, full_name, email, phone, province, warehouse_id, avatar, status, roles(code)";
 
 type UserWithRole = {
   id: string;
   full_name: string;
   email: string;
   phone: string | null;
+  province: string | null;
+  warehouse_id: string | null;
   avatar: string | null;
   status: string;
   roles: { code: string } | null;
@@ -28,6 +30,8 @@ function toAuthenticatedUser(user: UserWithRole): AuthenticatedUser {
     full_name: user.full_name,
     email: user.email,
     phone: user.phone,
+    province: user.province,
+    warehouse_id: user.warehouse_id,
     avatar: user.avatar,
     roleCode,
   };
@@ -67,10 +71,18 @@ export async function PATCH(request: NextRequest) {
   const parsed = updateProfileSchema.safeParse(body);
   if (!parsed.success) return fail(parsed.error.message);
 
-  const updates: { full_name?: string; email?: string; phone?: string | null } = {};
+  const updates: { full_name?: string; email?: string; phone?: string | null; province?: string | null } = {};
   if (parsed.data.full_name !== undefined) updates.full_name = parsed.data.full_name;
   if (parsed.data.email !== undefined) updates.email = parsed.data.email;
   if (parsed.data.phone !== undefined) updates.phone = parsed.data.phone;
+  if (parsed.data.province !== undefined) {
+    // Tinh phu trach la pham vi quyen, phai do admin cap; dieu phoi vien
+    // khong duoc tu doi tinh de mo rong danh sach don/kho/nhan vien.
+    if (auth.roleCode !== RoleCode.ADMIN) {
+      return fail("Chỉ quản trị viên được cập nhật tỉnh phụ trách", 403);
+    }
+    updates.province = parsed.data.province;
+  }
   if (Object.keys(updates).length === 0) return fail("Chưa có thông tin nào để cập nhật");
 
   const { data: userRaw, error } = await getSupabaseServiceClient()
