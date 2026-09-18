@@ -55,6 +55,25 @@ export const changePasswordSchema = z
   })
   .strict();
 
+export const forgotPasswordSchema = z
+  .object({
+    email: z.string().trim().email("email must be a valid email address"),
+  })
+  .strict();
+
+export const resetPasswordSchema = z
+  .object({
+    resetToken: z.string().min(1, "resetToken is required"),
+    newPassword: z
+      .string()
+      .min(8, "newPassword must be at least 8 characters")
+      .regex(/[A-Z]/, "newPassword must contain an uppercase letter")
+      .regex(/[a-z]/, "newPassword must contain a lowercase letter")
+      .regex(/[0-9]/, "newPassword must contain a number"),
+    confirmPassword: z.string().min(1, "confirmPassword is required"),
+  })
+  .strict();
+
 export type RegisterValidationResult =
   | { success: true; data: RegisterReqBody }
   | { success: false; error: string };
@@ -94,6 +113,44 @@ export function validateChangePasswordInput(
   body: unknown,
 ): ChangePasswordValidationResult {
   const result = changePasswordSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type ForgotPasswordValidationResult =
+  | {
+      success: true;
+      data: import("@/requests/auth.requests").ForgotPasswordReqBody;
+    }
+  | { success: false; error: string };
+
+export function validateForgotPasswordInput(
+  body: unknown,
+): ForgotPasswordValidationResult {
+  const result = forgotPasswordSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type ResetPasswordValidationResult =
+  | {
+      success: true;
+      data: import("@/requests/auth.requests").ResetPasswordReqBody;
+    }
+  | { success: false; error: string };
+
+export function validateResetPasswordInput(
+  body: unknown,
+): ResetPasswordValidationResult {
+  const result = resetPasswordSchema.safeParse(body);
   if (result.success) return { success: true, data: result.data };
 
   const message = result.error.issues

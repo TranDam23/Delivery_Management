@@ -16,3 +16,13 @@ export interface ChangePasswordReqBody {
   newPassword: string;
   confirmPassword: string;
 }
+
+export interface ForgotPasswordReqBody {
+  email: string;
+}
+
+export interface ResetPasswordReqBody {
+  resetToken: string;
+  newPassword: string;
+  confirmPassword: string;
+}
