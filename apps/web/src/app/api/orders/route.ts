@@ -110,34 +110,6 @@ async function findCustomerContactIds(
   return { ids: (contacts ?? []).map((contact) => contact.id), error: null };
 }
 
-/**
- * Lay cac contact co cung so dien thoai voi tai khoan dang dang nhap.
- *
- * user_id tren contact chi phan anh so dia chi cua nguoi da tao contact. No
- * khong phai la tai khoan cua nguoi se nhan hang, vi vay luong gui/nhan phai
- * doi chieu qua phone de tai khoan nguoi nhan cung thay duoc don.
- */
-async function findCustomerContactIds(
-  supabase: ServiceSupabaseClient,
-  userId: string,
-): Promise<{ ids: string[]; error: string | null }> {
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("phone")
-    .eq("id", userId)
-    .maybeSingle();
-  if (userError) return { ids: [], error: userError.message };
-
-  const phone = typeof user?.phone === "string" ? normalizePhone(user.phone) : "";
-  const contactQuery = supabase.from("contacts").select("id");
-  const { data: contacts, error: contactsError } = phone
-    ? await contactQuery.eq("phone", phone)
-    : await contactQuery.eq("user_id", userId);
-
-  if (contactsError) return { ids: [], error: contactsError.message };
-  return { ids: (contacts ?? []).map((contact) => contact.id), error: null };
-}
-
 /** Lay ID don ma tai khoan duoc phep xem, khong tra ve toan bo orders. */
 async function findVisibleOrderIds(
   supabase: ServiceSupabaseClient,
