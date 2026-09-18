@@ -20,11 +20,15 @@ export type Database = {
           contact_id: string
           created_at: string
           district: string | null
+          formatted_address: string | null
+          geocoded_at: string | null
           id: string
           is_default: boolean
           latitude: number | null
+          location_source: string | null
           longitude: number | null
           phone: string
+          place_id: string | null
           province: string | null
           recipient_name: string
           updated_at: string
@@ -35,11 +39,15 @@ export type Database = {
           contact_id: string
           created_at?: string
           district?: string | null
+          formatted_address?: string | null
+          geocoded_at?: string | null
           id?: string
           is_default?: boolean
           latitude?: number | null
+          location_source?: string | null
           longitude?: number | null
           phone: string
+          place_id?: string | null
           province?: string | null
           recipient_name: string
           updated_at?: string
@@ -50,11 +58,15 @@ export type Database = {
           contact_id?: string
           created_at?: string
           district?: string | null
+          formatted_address?: string | null
+          geocoded_at?: string | null
           id?: string
           is_default?: boolean
           latitude?: number | null
+          location_source?: string | null
           longitude?: number | null
           phone?: string
+          place_id?: string | null
           province?: string | null
           recipient_name?: string
           updated_at?: string
@@ -177,6 +189,7 @@ export type Database = {
           chain_timestamp: string | null
           created_at: string
           event_data_hash: string
+          event_payload: Json | null
           event_type: string
           id: string
           order_id: string
@@ -190,6 +203,7 @@ export type Database = {
           chain_timestamp?: string | null
           created_at?: string
           event_data_hash: string
+          event_payload?: Json | null
           event_type: string
           id?: string
           order_id: string
@@ -203,6 +217,7 @@ export type Database = {
           chain_timestamp?: string | null
           created_at?: string
           event_data_hash?: string
+          event_payload?: Json | null
           event_type?: string
           id?: string
           order_id?: string
@@ -337,6 +352,70 @@ export type Database = {
           },
         ]
       }
+      courier_locations: {
+        Row: {
+          accuracy_m: number | null
+          courier_id: string
+          created_at: string
+          heading_deg: number | null
+          id: string
+          latitude: number
+          longitude: number
+          order_id: string
+          recorded_at: string
+          shipment_leg_id: string
+          speed_mps: number | null
+        }
+        Insert: {
+          accuracy_m?: number | null
+          courier_id: string
+          created_at?: string
+          heading_deg?: number | null
+          id?: string
+          latitude: number
+          longitude: number
+          order_id: string
+          recorded_at?: string
+          shipment_leg_id: string
+          speed_mps?: number | null
+        }
+        Update: {
+          accuracy_m?: number | null
+          courier_id?: string
+          created_at?: string
+          heading_deg?: number | null
+          id?: string
+          latitude?: number
+          longitude?: number
+          order_id?: string
+          recorded_at?: string
+          shipment_leg_id?: string
+          speed_mps?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courier_locations_courier_id_fkey"
+            columns: ["courier_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_locations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "courier_locations_shipment_leg_id_fkey"
+            columns: ["shipment_leg_id"]
+            isOneToOne: false
+            referencedRelation: "shipment_legs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deliveries: {
         Row: {
           assigned_at: string
@@ -346,6 +425,7 @@ export type Database = {
           is_return: boolean
           order_id: string
           received_at: string | null
+          shipment_leg_id: string | null
         }
         Insert: {
           assigned_at?: string
@@ -355,6 +435,7 @@ export type Database = {
           is_return?: boolean
           order_id: string
           received_at?: string | null
+          shipment_leg_id?: string | null
         }
         Update: {
           assigned_at?: string
@@ -364,6 +445,7 @@ export type Database = {
           is_return?: boolean
           order_id?: string
           received_at?: string | null
+          shipment_leg_id?: string | null
         }
         Relationships: [
           {
@@ -385,6 +467,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliveries_shipment_leg_id_fkey"
+            columns: ["shipment_leg_id"]
+            isOneToOne: false
+            referencedRelation: "shipment_legs"
             referencedColumns: ["id"]
           },
         ]
@@ -637,10 +726,12 @@ export type Database = {
           created_at: string
           created_by: string
           delivery_address_id: string
+          delivery_warehouse_id: string | null
           expected_delivery_date: string | null
           id: string
           note: string | null
           pickup_address_id: string
+          pickup_warehouse_id: string | null
           qr_code: string
           receiver_id: string
           sender_id: string
@@ -656,10 +747,12 @@ export type Database = {
           created_at?: string
           created_by: string
           delivery_address_id: string
+          delivery_warehouse_id?: string | null
           expected_delivery_date?: string | null
           id?: string
           note?: string | null
           pickup_address_id: string
+          pickup_warehouse_id?: string | null
           qr_code: string
           receiver_id: string
           sender_id: string
@@ -675,10 +768,12 @@ export type Database = {
           created_at?: string
           created_by?: string
           delivery_address_id?: string
+          delivery_warehouse_id?: string | null
           expected_delivery_date?: string | null
           id?: string
           note?: string | null
           pickup_address_id?: string
+          pickup_warehouse_id?: string | null
           qr_code?: string
           receiver_id?: string
           sender_id?: string
@@ -704,10 +799,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_delivery_warehouse_id_fkey"
+            columns: ["delivery_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_pickup_address_id_fkey"
             columns: ["pickup_address_id"]
             isOneToOne: false
             referencedRelation: "addresses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_pickup_warehouse_id_fkey"
+            columns: ["pickup_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
           {
@@ -820,6 +929,247 @@ export type Database = {
         }
         Relationships: []
       }
+      warehouse_events: {
+        Row: {
+          actual_weight_kg: number | null
+          attempt_no: number
+          event_time: string
+          event_type: string
+          id: string
+          note: string | null
+          order_id: string
+          package_condition: string | null
+          performed_by: string
+          shipment_leg_id: string
+          warehouse_id: string
+        }
+        Insert: {
+          actual_weight_kg?: number | null
+          attempt_no?: number
+          event_time?: string
+          event_type: string
+          id?: string
+          note?: string | null
+          order_id: string
+          package_condition?: string | null
+          performed_by: string
+          shipment_leg_id: string
+          warehouse_id: string
+        }
+        Update: {
+          actual_weight_kg?: number | null
+          attempt_no?: number
+          event_time?: string
+          event_type?: string
+          id?: string
+          note?: string | null
+          order_id?: string
+          package_condition?: string | null
+          performed_by?: string
+          shipment_leg_id?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_events_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_events_shipment_leg_id_fkey"
+            columns: ["shipment_leg_id"]
+            isOneToOne: false
+            referencedRelation: "shipment_legs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warehouse_events_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warehouses: {
+        Row: {
+          address_line: string
+          capacity: number | null
+          code: string
+          created_at: string
+          district: string | null
+          geocoded_at: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          name: string
+          parent_warehouse_id: string | null
+          place_id: string | null
+          province: string
+          region_code: string | null
+          status: string
+          updated_at: string
+          ward: string | null
+          warehouse_level: string
+        }
+        Insert: {
+          address_line: string
+          capacity?: number | null
+          code: string
+          created_at?: string
+          district?: string | null
+          geocoded_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name: string
+          parent_warehouse_id?: string | null
+          place_id?: string | null
+          province: string
+          region_code?: string | null
+          status?: string
+          updated_at?: string
+          ward?: string | null
+          warehouse_level?: string
+        }
+        Update: {
+          address_line?: string
+          capacity?: number | null
+          code?: string
+          created_at?: string
+          district?: string | null
+          geocoded_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          name?: string
+          parent_warehouse_id?: string | null
+          place_id?: string | null
+          province?: string
+          region_code?: string | null
+          status?: string
+          updated_at?: string
+          ward?: string | null
+          warehouse_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warehouses_parent_warehouse_id_fkey"
+            columns: ["parent_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipment_legs: {
+        Row: {
+          attempt_no: number
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_staff_id: string | null
+          completed_at: string | null
+          created_at: string
+          from_warehouse_id: string | null
+          id: string
+          is_return: boolean
+          leg_type: string
+          note: string | null
+          order_id: string
+          responsibility_province: string | null
+          sequence_no: number
+          started_at: string | null
+          status: string
+          to_warehouse_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_no?: number
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_staff_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          from_warehouse_id?: string | null
+          id?: string
+          is_return?: boolean
+          leg_type: string
+          note?: string | null
+          order_id: string
+          responsibility_province?: string | null
+          sequence_no: number
+          started_at?: string | null
+          status?: string
+          to_warehouse_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_no?: number
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_staff_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          from_warehouse_id?: string | null
+          id?: string
+          is_return?: boolean
+          leg_type?: string
+          note?: string | null
+          order_id?: string
+          responsibility_province?: string | null
+          sequence_no?: number
+          started_at?: string | null
+          status?: string
+          to_warehouse_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_legs_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_settings: {
         Row: {
           description: string | null
@@ -854,9 +1204,11 @@ export type Database = {
           last_login_at: string | null
           password_hash: string
           phone: string | null
+          province: string | null
           role_id: string
           status: Database["public"]["Enums"]["user_status"]
           updated_at: string
+          warehouse_id: string | null
         }
         Insert: {
           avatar?: string | null
@@ -867,9 +1219,11 @@ export type Database = {
           last_login_at?: string | null
           password_hash: string
           phone?: string | null
+          province?: string | null
           role_id: string
           status?: Database["public"]["Enums"]["user_status"]
           updated_at?: string
+          warehouse_id?: string | null
         }
         Update: {
           avatar?: string | null
@@ -880,9 +1234,11 @@ export type Database = {
           last_login_at?: string | null
           password_hash?: string
           phone?: string | null
+          province?: string | null
           role_id?: string
           status?: Database["public"]["Enums"]["user_status"]
           updated_at?: string
+          warehouse_id?: string | null
         }
         Relationships: [
           {
@@ -890,6 +1246,13 @@ export type Database = {
             columns: ["role_id"]
             isOneToOne: false
             referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
             referencedColumns: ["id"]
           },
         ]

@@ -17,6 +17,8 @@ import { useEffect, useState } from "react";
 import {
   changePasswordSchema,
   OrderStatusCode,
+  RoleCode,
+  VIETNAM_PROVINCES,
   type AuthenticatedUser,
   type Paginated,
   updateProfileSchema,
@@ -25,7 +27,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
-import { TextField } from "@/components/ui/field";
+import { SelectField, TextField } from "@/components/ui/field";
 import { ApiError, apiFetch, updateStoredUser } from "@/lib/api-client";
 import { ROLE_LABEL } from "@/lib/role-routing";
 import { statusCode, type OrderListItem } from "@/lib/order-ui";
@@ -38,6 +40,7 @@ interface ProfileFormState {
   full_name: string;
   email: string;
   phone: string;
+  province: string;
 }
 
 interface PasswordFormState {
@@ -55,6 +58,7 @@ const INITIAL_PROFILE: ProfileFormState = {
   full_name: "",
   email: "",
   phone: "",
+  province: "",
 };
 
 const INITIAL_PASSWORD: PasswordFormState = {
@@ -77,6 +81,7 @@ function profileFormFromUser(user: AuthenticatedUser): ProfileFormState {
     full_name: user.full_name,
     email: user.email,
     phone: user.phone ?? "",
+    province: user.province ?? "",
   };
 }
 
@@ -84,7 +89,15 @@ function firstValidationMessage(fieldErrors: Record<string, string[] | undefined
   return Object.values(fieldErrors).flat().find(Boolean) ?? fallback;
 }
 
-export function ProfilePage(): React.JSX.Element {
+interface ProfilePageProps {
+  homeHref?: string;
+  homeLabel?: string;
+}
+
+export function ProfilePage({
+  homeHref = "/customer",
+  homeLabel = "Về tổng quan",
+}: ProfilePageProps = {}): React.JSX.Element {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [form, setForm] = useState<ProfileFormState>(INITIAL_PROFILE);
   const [passwordForm, setPasswordForm] = useState<PasswordFormState>(INITIAL_PASSWORD);
@@ -154,7 +167,10 @@ export function ProfilePage(): React.JSX.Element {
 
   async function handleProfileSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const parsed = updateProfileSchema.safeParse(form);
+    // Tinh phu trach la pham vi quyen do admin cap, khong nam trong form tu
+    // cap nhat ca nhan cua dieu phoi vien.
+    const profilePayload = { full_name: form.full_name, email: form.email, phone: form.phone };
+    const parsed = updateProfileSchema.safeParse(profilePayload);
     if (!parsed.success) {
       setProfileError(firstValidationMessage(parsed.error.flatten().fieldErrors, "Thông tin hồ sơ chưa hợp lệ"));
       return;
@@ -210,8 +226,8 @@ export function ProfilePage(): React.JSX.Element {
         heading="Hồ sơ"
         subtitle="Thông tin tài khoản và tùy chọn nhận thông báo."
         action={
-          <Link href="/customer" className={buttonClassName("secondary")}>
-            Về tổng quan
+          <Link href={homeHref} className={buttonClassName("secondary")}>
+            {homeLabel}
           </Link>
         }
       />
@@ -305,10 +321,30 @@ export function ProfilePage(): React.JSX.Element {
                   onChange={(event) => updateProfileField("email", event.target.value)}
                   hint="Email là định danh đăng nhập và phải duy nhất."
                 />
+                {user.roleCode === RoleCode.DISPATCHER ? (
+                  <SelectField
+                    label="Tỉnh/thành phố phụ trách (do Admin cấp)"
+                    value={form.province}
+                    disabled
+                    hint="Phạm vi này do quản trị viên cấu hình để bảo vệ dữ liệu và quyền truy cập theo khu vực."
+                  >
+                    <option value="" className="bg-dt-panel2">Chọn tỉnh/thành phố</option>
+                    {VIETNAM_PROVINCES.map((province) => (
+                      <option key={province} value={province} className="bg-dt-panel2">{province}</option>
+                    ))}
+                  </SelectField>
+                ) : null}
 
-                <div className="grid gap-3 rounded-dt bg-dt-panel2 p-3 sm:grid-cols-2">
+                <div className={`grid gap-3 rounded-dt bg-dt-panel2 p-3 ${user.roleCode === RoleCode.DISPATCHER || user.roleCode === RoleCode.WAREHOUSE_STAFF ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                   <ProfileInfo icon={<UserRound size={15} />} label="Vai trò" value={ROLE_LABEL[user.roleCode]} />
                   <ProfileInfo icon={<ShieldCheck size={15} />} label="Quyền hạn" value="Theo vai trò hệ thống" />
+                  {user.roleCode === RoleCode.DISPATCHER || user.roleCode === RoleCode.WAREHOUSE_STAFF ? (
+                    <ProfileInfo
+                      icon={<Package size={15} />}
+                      label="Kho phụ trách"
+                      value={user.warehouse_id ? "Đã được Admin gán" : "Chưa được gán"}
+                    />
+                  ) : null}
                 </div>
                 <p className="text-[11px] text-dt-muted">
                   Vai trò và quyền hạn do hệ thống quản lý, bạn không thể tự thay đổi tại màn hình này.

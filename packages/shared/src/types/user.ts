@@ -7,6 +7,8 @@ export interface User {
   email: string;
   password_hash: string;
   phone: string | null;
+  province: string | null;
+  warehouse_id: string | null;
   avatar: string | null;
   status: UserStatus;
   created_at: string;

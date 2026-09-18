@@ -34,15 +34,31 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
   const { data: events } = await supabase
     .from("delivery_events")
-    .select("event_time, location_lat, location_lng, note, order_statuses(code, name)")
+    .select("event_time, location_lat, location_lng, note, order_statuses!delivery_events_status_id_fkey(code, name)")
     .eq("order_id", order.id)
     .order("event_time", { ascending: true });
 
   const { data: blockchainEvents } = await supabase
     .from("blockchain_events")
-    .select("event_type, transaction_hash, block_number, created_at")
+    .select("event_type, transaction_hash, block_number, tx_status, created_at")
     .eq("order_id", order.id)
     .order("created_at", { ascending: true });
 
-  return ok({ order, events: events ?? [], blockchainEvents: blockchainEvents ?? [] });
+  const { data: warehouseEvents, error: warehouseEventsError } = await supabase
+    .from("warehouse_events")
+    .select(`
+      event_time, event_type, note,
+      warehouse:warehouses!warehouse_events_warehouse_id_fkey(code, name, province),
+      leg:shipment_legs!warehouse_events_shipment_leg_id_fkey(sequence_no, leg_type)
+    `)
+    .eq("order_id", order.id)
+    .order("event_time", { ascending: true });
+  if (warehouseEventsError) return fail(warehouseEventsError.message, 500);
+
+  return ok({
+    order,
+    events: events ?? [],
+    warehouseEvents: warehouseEvents ?? [],
+    blockchainEvents: blockchainEvents ?? [],
+  });
 }

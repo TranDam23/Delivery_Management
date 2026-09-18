@@ -19,6 +19,10 @@ export interface AuthenticatedUser {
   full_name: string;
   email: string;
   phone: string | null;
+  /** Tỉnh/thành phố phụ trách, áp dụng cho tài khoản điều phối viên. */
+  province: string | null;
+  /** Kho vận hành được Admin gán cho điều phối viên/nhân viên kho. */
+  warehouse_id: string | null;
   avatar: string | null;
   roleCode: RoleCode;
 }

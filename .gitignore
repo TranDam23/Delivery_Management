@@ -35,9 +35,21 @@ ios/Pods/
 android/app/build/
 android/.gradle/
 
-# Supabase
-packages/database/supabase/.branches/
-packages/database/supabase/.temp/
+# Expo tự sinh khi chạy app
+expo-env.d.ts
+
+# Supabase CLI (cache, chứa project ref và địa chỉ kết nối database)
+**/supabase/.branches/
+**/supabase/.temp/
+
+# Vercel
+.vercel/
+
+# Claude Code: cấu hình cục bộ trên từng máy
+.claude/launch.json
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
 
 # Hardhat
 packages/contracts/cache/

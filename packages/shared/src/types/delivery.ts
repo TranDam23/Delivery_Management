@@ -3,6 +3,7 @@ import type { DeliveryAttemptResult } from "../enums";
 export interface Delivery {
   id: string;
   order_id: string;
+  shipment_leg_id: string | null;
   delivery_staff_id: string;
   assigned_by: string;
   assigned_at: string;

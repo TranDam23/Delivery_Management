@@ -18,17 +18,16 @@ const CONTACT_SELECT =
   "id, user_id, type, name, phone, email, default_address_id, created_at, updated_at, " +
   "default_address:addresses!contacts_default_address_id_fkey(" +
   "id, contact_id, recipient_name, phone, address_line, ward, district, province, " +
-  "latitude, longitude, is_default, created_at, updated_at)";
+  "latitude, longitude, place_id, formatted_address, location_source, is_default, created_at, updated_at)";
 
-/** Dieu phoi/admin nhin duoc so dia chi cua moi khach hang de tao don ho. */
+/** Chi admin moi duoc xem so dia chi tong cua khach hang. */
 function seesAllContacts(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
+  return roleCode === RoleCode.ADMIN;
 }
 
 function canManageContacts(roleCode: RoleCode): boolean {
   return (
     roleCode === RoleCode.ADMIN ||
-    roleCode === RoleCode.DISPATCHER ||
     roleCode === RoleCode.CUSTOMER
   );
 }
@@ -43,6 +42,7 @@ function typeFilterValues(type: ContactType): ContactType[] {
 export async function GET(request: NextRequest) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const { searchParams } = new URL(request.url);
   const parsedQuery = listContactsQuerySchema.safeParse(Object.fromEntries(searchParams));

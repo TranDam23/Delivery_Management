@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { SelectField, TextField } from "@/components/ui/field";
+import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { apiFetch } from "@/lib/api-client";
 import { addressText } from "@/lib/order-ui";
 
@@ -96,14 +97,32 @@ function manualAddressText(contact: ManualContactForm): string {
 }
 
 function validateManualContact(contact: ManualContactForm, label: string): string | null {
-  if (!contact.name.trim() || !contact.phone.trim() || !contact.addressLine.trim()) {
-    return `Vui lòng nhập họ tên, số điện thoại và địa chỉ của ${label}.`;
+  const missing = [
+    !contact.name.trim() ? "họ tên" : null,
+    !contact.phone.trim() ? "số điện thoại" : null,
+    !contact.addressLine.trim() ? "địa chỉ cụ thể" : null,
+    !contact.ward.trim() ? "xã/phường" : null,
+    !contact.province.trim() ? "tỉnh/thành phố" : null,
+  ].filter((field): field is string => Boolean(field));
+  if (missing.length > 0) {
+    return `Vui lòng nhập ${missing.join(", ")} của ${label} trước khi tạo đơn.`;
   }
 
   if (!/^0\d{9}$/.test(normalizePhone(contact.phone))) {
     return `Số điện thoại của ${label} phải gồm 10 chữ số và bắt đầu bằng 0.`;
   }
 
+  return null;
+}
+
+function validateRoutingAddress(address: Address | null | undefined, label: string): string | null {
+  const missing = [
+    !address?.ward?.trim() ? "xã/phường" : null,
+    !address?.province?.trim() ? "tỉnh/thành phố" : null,
+  ].filter((field): field is string => Boolean(field));
+  if (missing.length > 0) {
+    return `Vui lòng bổ sung ${missing.join(", ")} cho địa chỉ ${label} để hệ thống phân tuyến qua kho.`;
+  }
   return null;
 }
 
@@ -145,11 +164,14 @@ function ManualContactFields({
         value={value.addressLine}
         onChange={(event) => onChange("addressLine", event.target.value)}
       />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <TextField label="Phường/Xã" value={value.ward} onChange={(event) => onChange("ward", event.target.value)} />
-        <TextField label="Quận/Huyện" value={value.district} onChange={(event) => onChange("district", event.target.value)} />
-        <TextField label="Tỉnh/Thành phố" value={value.province} onChange={(event) => onChange("province", event.target.value)} />
-      </div>
+      <AddressLocationFields
+        value={{ province: value.province, district: value.district, ward: value.ward }}
+        onChange={(location) => {
+          onChange("province", location.province);
+          onChange("district", location.district);
+          onChange("ward", location.ward);
+        }}
+      />
       <p className="text-[10px] leading-4 text-dt-muted">Thông tin nhập trực tiếp sẽ được lưu vào sổ địa chỉ để dùng lại cho các đơn sau.</p>
     </div>
   );
@@ -320,6 +342,16 @@ export function NewOrderPage(): React.JSX.Element {
       }
       if (!sender.default_address || !receiver.default_address) {
         setFormError("Người gửi và người nhận phải có địa chỉ mặc định trước khi tạo đơn.");
+        return;
+      }
+      const senderAddressError = validateRoutingAddress(sender.default_address, "lấy hàng");
+      if (senderAddressError) {
+        setFormError(senderAddressError);
+        return;
+      }
+      const receiverAddressError = validateRoutingAddress(receiver.default_address, "giao hàng");
+      if (receiverAddressError) {
+        setFormError(receiverAddressError);
         return;
       }
 

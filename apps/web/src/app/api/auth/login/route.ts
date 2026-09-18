@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const supabase = getSupabaseServiceClient();
   const { data: userRaw, error } = await supabase
     .from("users")
-    .select("id, full_name, email, password_hash, phone, avatar, status, role_id, roles(code)")
+    .select("id, full_name, email, password_hash, phone, province, warehouse_id, avatar, status, role_id, roles(code)")
     .eq("email", email)
     .maybeSingle();
   const user = userRaw as
@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
         email: string;
         password_hash: string;
         phone: string | null;
+        province: string | null;
+        warehouse_id: string | null;
         avatar: string | null;
         status: string;
         role_id: string;
@@ -65,6 +67,8 @@ export async function POST(request: NextRequest) {
     full_name: user.full_name,
     email: user.email,
     phone: user.phone,
+    province: user.province,
+    warehouse_id: user.warehouse_id,
     avatar: user.avatar,
     roleCode,
   };

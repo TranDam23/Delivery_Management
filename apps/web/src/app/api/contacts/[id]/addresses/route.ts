@@ -3,13 +3,18 @@ import { RoleCode, createAddressSchema } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
+import { addressGeoColumns } from "@/lib/geo";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 function seesAllContacts(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
+  return roleCode === RoleCode.ADMIN;
+}
+
+function canManageContacts(roleCode: RoleCode): boolean {
+  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER;
 }
 
 async function getAccessibleContact(contactId: string, userId: string, roleCode: RoleCode) {
@@ -32,6 +37,7 @@ async function getAccessibleContact(contactId: string, userId: string, roleCode:
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const { id } = await params;
   const access = await getAccessibleContact(id, auth.userId, auth.roleCode);
@@ -52,6 +58,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canManageContacts(auth.roleCode)) return fail("Forbidden", 403);
 
   const { id } = await params;
   const access = await getAccessibleContact(id, auth.userId, auth.roleCode);
@@ -78,6 +85,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       district: parsed.data.district || null,
       province: parsed.data.province || null,
       is_default: shouldBeDefault,
+      ...addressGeoColumns(parsed.data),
     })
     .select("*")
     .single();
@@ -100,4 +108,3 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   return ok(address, 201);
 }
-

@@ -102,3 +102,29 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   return payload.data as T;
 }
+
+/**
+ * Gửi multipart/form-data (tải ảnh). Không đặt Content-Type để trình duyệt
+ * tự thêm boundary cho FormData.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const token = getToken();
+  const response = await fetch(path, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+
+  let payload: ApiResponse<T> | null = null;
+  try {
+    payload = (await response.json()) as ApiResponse<T>;
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(payload?.error ?? `Lỗi ${response.status}`, response.status);
+  }
+
+  return payload.data as T;
+}

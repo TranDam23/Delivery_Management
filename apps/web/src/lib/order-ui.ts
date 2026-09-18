@@ -22,6 +22,16 @@ export interface OrderAddressSummary {
   province: string | null;
 }
 
+export interface OrderWarehouseSummary {
+  id: string;
+  code: string;
+  name: string;
+  ward: string | null;
+  district: string | null;
+  province: string;
+  warehouse_level: string;
+}
+
 export interface OrderListItem {
   id: string;
   tracking_code: string;
@@ -38,6 +48,8 @@ export interface OrderListItem {
   receiver: OrderContactSummary | OrderContactSummary[] | null;
   pickup_address: OrderAddressSummary | OrderAddressSummary[] | null;
   delivery_address: OrderAddressSummary | OrderAddressSummary[] | null;
+  pickup_warehouse?: OrderWarehouseSummary | OrderWarehouseSummary[] | null;
+  delivery_warehouse?: OrderWarehouseSummary | OrderWarehouseSummary[] | null;
 }
 
 export interface OrderDetail extends OrderListItem {
@@ -78,6 +90,13 @@ export interface TrackingOrder {
 export interface TrackingResult {
   order: TrackingOrder;
   events: OrderEvent[];
+  warehouseEvents: Array<{
+    event_time: string;
+    event_type: string;
+    note: string | null;
+    warehouse: { code: string; name: string; province: string } | null;
+    leg: { sequence_no: number; leg_type: string } | null;
+  }>;
   blockchainEvents: Array<{
     event_type: string;
     transaction_hash: string | null;
@@ -155,4 +174,3 @@ export function addressText(address: OrderAddressSummary | null): string {
     .filter(Boolean)
     .join(", ");
 }
-
