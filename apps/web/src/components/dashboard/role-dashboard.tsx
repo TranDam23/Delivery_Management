@@ -82,6 +82,15 @@ const DISPATCHER_NAV: NavItem[] = [
   { label: "Tài khoản", icon: Settings },
 ];
 
+const WAREHOUSE_NAV: NavItem[] = [
+  { label: "Tổng quan", icon: LayoutDashboard, active: true },
+  { label: "Hàng chờ nhập", icon: Package },
+  { label: "Hàng trong kho", icon: ClipboardList },
+  { label: "Hàng chờ xuất", icon: PackageCheck },
+  { label: "Thông báo", icon: Bell },
+  { label: "Tài khoản", icon: Settings },
+];
+
 const METRIC_ICON_TONE: Record<Metric["tone"], string> = {
   yellow: "bg-dt-yellow/10 text-dt-yellow",
   green: "bg-dt-green/10 text-dt-green",
@@ -423,6 +432,24 @@ function DispatcherHome(props: RoleDashboardProps): React.JSX.Element {
   );
 }
 
+function WarehouseHome(props: RoleDashboardProps): React.JSX.Element {
+  const metrics: Metric[] = [
+    { label: "Hàng chờ nhập", value: "24", detail: "Cập nhật trong ngày", icon: Package, tone: "yellow" },
+    { label: "Đang lưu kho", value: "186", detail: "Tổng kiện đang xử lý", icon: ClipboardList, tone: "blue" },
+    { label: "Chờ xuất kho", value: "18", detail: "Cần bàn giao trong ca", icon: PackageCheck, tone: "green" },
+    { label: "Cảnh báo", value: "03", detail: "Cần kiểm tra", icon: AlertTriangle, tone: "red" },
+  ];
+
+  return (
+    <DesktopHome {...props} navItems={WAREHOUSE_NAV} metrics={metrics}>
+      <section className="rounded-dt border border-dt-border bg-dt-panel p-5">
+        <p className="text-sm font-semibold">Tổng quan kho</p>
+        <p className="mt-1 text-[10px] text-dt-muted">{props.description}</p>
+      </section>
+    </DesktopHome>
+  );
+}
+
 function DeliveryHome({ heading, subtitle, description }: Omit<RoleDashboardProps, "roleCode">): React.JSX.Element {
   const mobileNav = [
     { label: "Trang chủ", icon: Home, active: true },
@@ -485,6 +512,7 @@ export function RoleDashboard({ roleCode, heading, subtitle, description }: Role
       {roleCode === RoleCode.ADMIN ? <AdminHome roleCode={roleCode} heading={heading} subtitle={subtitle} description={description} /> : null}
       {roleCode === RoleCode.DISPATCHER ? <DispatcherHome roleCode={roleCode} heading={heading} subtitle={subtitle} description={description} /> : null}
       {roleCode === RoleCode.DELIVERY_STAFF ? <DeliveryHome heading={heading} subtitle={subtitle} description={description} /> : null}
+      {roleCode === RoleCode.WAREHOUSE_STAFF ? <WarehouseHome roleCode={roleCode} heading={heading} subtitle={subtitle} description={description} /> : null}
       {roleCode === RoleCode.CUSTOMER ? <CustomerHome /> : null}
     </AuthGuard>
   );

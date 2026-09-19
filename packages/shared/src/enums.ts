@@ -90,6 +90,7 @@ export const RoleCode = {
   ADMIN: "ADMIN",
   DISPATCHER: "DISPATCHER",
   DELIVERY_STAFF: "DELIVERY_STAFF",
+  WAREHOUSE_STAFF: "WAREHOUSE_STAFF",
   /** Tai khoan khach hang co the vua gui vua nhan hang. */
   CUSTOMER: "CUSTOMER",
 } as const;
