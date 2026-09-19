@@ -1,6 +1,17 @@
 import type { DatabaseService } from "@/database/database.service";
 import type { PublicUser, User } from "@/models/schemas/User.schema";
 
+export interface ListUsersParams {
+  page: number;
+  limit: number;
+  search?: string;
+}
+
+export interface ListUsersResult {
+  users: PublicUser[];
+  total: number;
+}
+
 export interface PasswordUserRecord {
   id: string;
   password_hash: string;
@@ -48,6 +59,33 @@ export class UserRepository {
 
     if (error) throw new Error("Failed to load account");
     return data;
+  }
+
+  async listUsers(params: ListUsersParams): Promise<ListUsersResult> {
+    const from = (params.page - 1) * params.limit;
+    const to = from + params.limit - 1;
+    let query = this.database
+      .getClient()
+      .from("users")
+      .select(
+        "id, role_id, full_name, email, phone, avatar, status, created_at, updated_at, last_login_at",
+        { count: "exact" },
+      )
+      .range(from, to)
+      .order("created_at", { ascending: false });
+
+    if (params.search) {
+      const search = params.search
+        .replace(/\\/g, "\\\\")
+        .replace(/,/g, "\\,")
+        .replace(/%/g, "\\%");
+      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query;
+    if (error) throw new Error("Failed to load users");
+
+    return { users: data ?? [], total: count ?? 0 };
   }
 
   async findPasswordUserById(id: string): Promise<PasswordUserRecord | null> {
