@@ -72,6 +72,26 @@ export class UserRepository {
     if (error) throw new Error("Failed to update password");
   }
 
+  async updateProfile(
+    id: string,
+    input: {
+      full_name?: string;
+      phone?: string | null;
+      avatar?: string | null;
+    },
+  ): Promise<void> {
+    const { error } = await this.database
+      .getClient()
+      .from("users")
+      .update({
+        ...input,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) throw new Error("Failed to update profile");
+  }
+
   async createUser(input: {
     role_id: string;
     full_name: string;

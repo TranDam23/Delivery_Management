@@ -26,3 +26,9 @@ export interface ResetPasswordReqBody {
   newPassword: string;
   confirmPassword: string;
 }
+
+export interface UpdateUserProfileReqBody {
+  fullName?: string;
+  phone?: string | null;
+  avatar?: string | null;
+}

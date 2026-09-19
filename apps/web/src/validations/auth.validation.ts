@@ -74,6 +74,21 @@ export const resetPasswordSchema = z
   })
   .strict();
 
+export const updateUserProfileSchema = z
+  .object({
+    fullName: z.string().trim().min(1, "fullName must not be empty").optional(),
+    phone: z.string().nullable().optional(),
+    avatar: z.string().nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.fullName !== undefined ||
+      value.phone !== undefined ||
+      value.avatar !== undefined,
+    { message: "At least one profile field is required" },
+  );
+
 export type RegisterValidationResult =
   | { success: true; data: RegisterReqBody }
   | { success: false; error: string };
@@ -151,6 +166,25 @@ export function validateResetPasswordInput(
   body: unknown,
 ): ResetPasswordValidationResult {
   const result = resetPasswordSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type UpdateUserProfileValidationResult =
+  | {
+      success: true;
+      data: import("@/requests/auth.requests").UpdateUserProfileReqBody;
+    }
+  | { success: false; error: string };
+
+export function validateUpdateUserProfileInput(
+  body: unknown,
+): UpdateUserProfileValidationResult {
+  const result = updateUserProfileSchema.safeParse(body);
   if (result.success) return { success: true, data: result.data };
 
   const message = result.error.issues
