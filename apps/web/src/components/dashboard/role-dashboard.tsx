@@ -13,6 +13,7 @@ import {
   FileCheck2,
   LayoutDashboard,
   MapPin,
+  Package,
   PackageCheck,
   Route,
   Search,
@@ -77,10 +78,10 @@ export const DISPATCHER_NAV: NavItem[] = [
   { label: "Giao nhận", icon: PackageCheck },
   { label: "Tài xế", icon: Truck },
   { label: "Theo dõi realtime", icon: Activity },
-  // Hang dac biet va doi soat COD thuoc cac bo phan nghiep vu chuyen trach;
-  // dieu phoi vien chi nhan canh bao de phoi hop khi phat sinh bat thuong.
+  { label: "Hàng đặc biệt", icon: Package },
+  { label: "COD", icon: WalletCards },
   { label: "Hoàn hàng", icon: Route },
-  { label: "Cảnh báo", icon: AlertTriangle },
+  { label: "Cảnh báo", icon: AlertTriangle, badge: "4" },
   { label: "Thông báo", icon: Bell },
   { label: "Tài khoản", icon: Settings, href: "/dashboard/dispatcher/account" },
 ];

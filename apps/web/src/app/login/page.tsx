@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { AuthenticatedUser } from "@delivery/shared";
 import { normalizeRoleCode } from "@delivery/shared";
@@ -123,10 +124,9 @@ export default function LoginPage(): React.JSX.Element {
               <span className="flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.08em] text-dt-muted">
                 <span>Mật khẩu</span>
                 <span
-                  title="Chức năng khôi phục mật khẩu sẽ được bổ sung sau"
-                  className="normal-case tracking-normal text-[10px] text-dt-yellow/70"
+                  className="normal-case tracking-normal text-[10px] text-dt-yellow/70 transition hover:text-dt-yellow"
                 >
-                  Quên mật khẩu?
+                  <Link href="/forgot-password">Quên mật khẩu?</Link>
                 </span>
               </span>
               <span className="relative">
@@ -183,7 +183,10 @@ export default function LoginPage(): React.JSX.Element {
           </button>
 
           <p className="mt-5 text-center text-[10px] text-dt-muted">
-            Chưa có tài khoản? <span className="text-dt-yellow/70">Đăng ký ngay</span>
+            Chưa có tài khoản?{" "}
+            <Link href="/register" className="text-dt-yellow/70 transition hover:text-dt-yellow hover:underline">
+              Đăng ký ngay
+            </Link>
           </p>
         </form>
 
