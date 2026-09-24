@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  ClipboardList,
   MapPin,
   Plus,
   RefreshCw,
@@ -18,14 +17,14 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PackageCondition, RoleCode, ShipmentLegStatusCode, ShipmentLegType, VIETNAM_PROVINCES, WarehouseEventType, WarehouseLevelCode, WarehouseStatusCode, type AuthenticatedUser, type ShipmentLegStatusCode as ShipmentLegStatus, type ShipmentLegType as ShipmentType, type Warehouse } from "@delivery/shared";
+import { OrderStatusCode, PackageCondition, RoleCode, ShipmentLegStatusCode, ShipmentLegType, VIETNAM_PROVINCES, WarehouseEventType, WarehouseLevelCode, WarehouseStatusCode, type AuthenticatedUser, type ShipmentLegStatusCode as ShipmentLegStatus, type ShipmentLegType as ShipmentType, type Warehouse } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { SelectField, TextField } from "@/components/ui/field";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { apiFetch } from "@/lib/api-client";
-import { formatDateTime } from "@/lib/order-ui";
+import { formatDateTime, STATUS_LABEL, statusClass as orderStatusClass } from "@/lib/order-ui";
 import { legStatusLabel, legTypeLabel } from "@/lib/shipment-routing";
 
 interface PlanningAddress {
@@ -44,6 +43,7 @@ interface PlanningOrder {
   delivery_warehouse: WarehouseSummary | null;
   pickup_address: PlanningAddress | null;
   delivery_address: PlanningAddress | null;
+  order_items?: Array<{ id: string; item_name: string; quantity: number; weight: number | null }>;
 }
 
 interface StaffOption {
@@ -120,6 +120,23 @@ const EMPTY_WAREHOUSE: WarehouseForm = {
 };
 
 const WAREHOUSES_PER_PAGE = 10;
+const ROUTES_PER_PAGE = 10;
+const ORDER_STATUS_FILTERS = [
+  "ALL",
+  OrderStatusCode.CREATED,
+  OrderStatusCode.PENDING_ASSIGNMENT,
+  OrderStatusCode.ASSIGNED,
+  OrderStatusCode.PICKED_UP,
+  OrderStatusCode.IN_WAREHOUSE,
+  OrderStatusCode.IN_TRANSIT,
+  OrderStatusCode.DELIVERING,
+  OrderStatusCode.DELIVERY_FAILED,
+  OrderStatusCode.REDELIVERY,
+  OrderStatusCode.RETURNING,
+  OrderStatusCode.DELIVERED,
+  OrderStatusCode.RETURNED,
+  OrderStatusCode.CANCELLED,
+].map((value) => ({ value, label: value === "ALL" ? "Tất cả" : STATUS_LABEL[value] ?? value }));
 
 function normalizeSearchText(value: string): string {
   return value
@@ -164,6 +181,88 @@ function operationalWarehouseId(leg: RouteLeg): string | null {
   return leg.leg_type === ShipmentLegType.PICKUP ? leg.to_warehouse_id : leg.from_warehouse_id;
 }
 
+interface RouteDetailsModalProps {
+  routeItem: RouteItem;
+  staff: StaffOption[];
+  currentUser: AuthenticatedUser | null;
+  saving: boolean;
+  onClose: () => void;
+  onAssign: (legId: string, staffId: string) => void;
+  renderLegAction: (leg: RouteLeg) => React.JSX.Element | null;
+}
+
+function RouteDetailsModal({ routeItem, staff, currentUser, saving, onClose, onAssign, renderLegAction }: RouteDetailsModalProps): React.JSX.Element {
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape" && !saving) onClose();
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, saving]);
+
+  const order = routeItem.order;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="route-details-title" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-dt border border-dt-border bg-dt-panel shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-dt-border px-5 py-4 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-dt-yellow">Chi tiết tuyến đơn hàng</p>
+            <h2 id="route-details-title" className="mt-1 truncate text-lg font-semibold">{order.tracking_code}</h2>
+          </div>
+          <Button type="button" variant="secondary" className="h-9 w-9 shrink-0 px-0" aria-label="Đóng chi tiết đơn hàng" onClick={onClose}><X size={16} /></Button>
+        </header>
+        <div className="overflow-y-auto p-4 sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-dt-border bg-dt-panel2 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-dt-muted">Người gửi · lấy hàng</p>
+              <p className="mt-1 text-xs leading-5">{addressLabel(order.pickup_address)}</p>
+            </div>
+            <div className="rounded-md border border-dt-border bg-dt-panel2 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-dt-muted">Người nhận · giao hàng</p>
+              <p className="mt-1 text-xs leading-5">{addressLabel(order.delivery_address)}</p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-md border border-dt-border bg-dt-panel2 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-dt-muted">Hàng hóa</p>
+              <p className="text-[10px] text-dt-muted">{order.order_items?.length ?? 0} mặt hàng</p>
+            </div>
+            {!order.order_items?.length ? <p className="mt-2 text-xs text-dt-muted">Chưa có thông tin hàng hóa.</p> : (
+              <ul className="mt-2 divide-y divide-dt-border/70">
+                {order.order_items.map((item) => <li key={item.id} className="flex flex-wrap justify-between gap-2 py-2 text-xs"><span>{item.item_name}</span><span className="text-dt-muted">SL {item.quantity}{item.weight ? ` · ${item.weight} kg` : ""}</span></li>)}
+              </ul>
+            )}
+          </div>
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
+            <div><p className="text-[10px] font-semibold uppercase tracking-wide text-dt-muted">Các chặng vận chuyển</p><p className="mt-1 text-xs text-dt-muted">Phân công shipper và theo dõi trạng thái từng chặng tại đây.</p></div>
+            <span className="rounded-full bg-dt-yellow/10 px-2.5 py-1 text-[10px] text-dt-yellow">{routeItem.legs.length} chặng</span>
+          </div>
+          <div className="mt-3 space-y-3">
+            {routeItem.legs.map((leg) => {
+              const staffWarehouseId = operationalWarehouseId(leg);
+              const legStaff = staffWarehouseId ? staff.filter((member) => member.warehouse_id === staffWarehouseId) : [];
+              return <section key={leg.id} className="rounded-md border border-dt-border bg-dt-panel2 p-3 sm:p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xs font-semibold">Chặng {leg.sequence_no}: {legTypeLabel(leg.leg_type, leg.is_return)}</h3>
+                  <span className={`rounded-full px-2 py-1 text-[10px] ${statusClass(leg.status)}`}>{legStatusLabel(leg.status)}</span>
+                </div>
+                <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-dt-muted">{leg.from_warehouse ? warehouseLabel(leg.from_warehouse) : "Người gửi"}<ArrowRight size={12} />{leg.to_warehouse ? warehouseLabel(leg.to_warehouse) : leg.is_return ? "Người gửi (hoàn hàng)" : "Người nhận"}</p>
+                {leg.updated_at && <p className="mt-1 text-[10px] text-dt-muted">Cập nhật {formatDateTime(leg.updated_at)}</p>}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {canAssignShipper(leg) ? <select aria-label={`Phân công chặng ${leg.sequence_no}`} value={leg.assigned_staff_id ?? ""} onChange={(event) => onAssign(leg.id, event.target.value)} disabled={saving || leg.status === ShipmentLegStatusCode.COMPLETED || leg.status === ShipmentLegStatusCode.CANCELLED || (leg.leg_type === ShipmentLegType.LAST_MILE && leg.status === ShipmentLegStatusCode.PENDING)} className="h-9 min-w-[210px] rounded-dt border border-dt-border bg-dt-panel px-2 text-[11px] text-dt-text"><option value="">Chọn nhân viên</option>{legStaff.map((member) => <option key={member.id} value={member.id}>{member.full_name}{member.phone ? ` · ${member.phone}` : ""}{member.warehouse ? ` · ${member.warehouse.code}` : ""}</option>)}</select> : <span className="text-[10px] text-dt-muted">Nhân viên kho xử lý chặng trung chuyển</span>}
+                  {canAssignShipper(leg) && leg.status === ShipmentLegStatusCode.PENDING && leg.leg_type === ShipmentLegType.LAST_MILE && <span className="text-[10px] text-dt-muted">Chờ hàng nhập kho đích</span>}
+                  {leg.status === ShipmentLegStatusCode.FAILED && <span className="text-[10px] text-red-300">Chặng thất bại lần {leg.attempt_no} · cần xử lý hoặc phân công lại</span>}
+                  {currentUser?.roleCode === RoleCode.ADMIN && renderLegAction(leg)}
+                </div>
+              </section>;
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function WarehouseManagementPage(): React.JSX.Element {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [unplannedOrders, setUnplannedOrders] = useState<RouteItem[]>([]);
@@ -176,8 +275,11 @@ export function WarehouseManagementPage(): React.JSX.Element {
   const [appliedProvinceSearch, setAppliedProvinceSearch] = useState("");
   const [appliedWardSearch, setAppliedWardSearch] = useState("");
   const [warehousePage, setWarehousePage] = useState(1);
+  const [routePage, setRoutePage] = useState(1);
+  const [routeStatusFilter, setRouteStatusFilter] = useState<string>("ALL");
   const [isAddWarehouseOpen, setIsAddWarehouseOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState("");
+  const [openRouteOrderId, setOpenRouteOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +327,23 @@ export function WarehouseManagementPage(): React.JSX.Element {
     (warehousePage - 1) * WAREHOUSES_PER_PAGE,
     warehousePage * WAREHOUSES_PER_PAGE,
   );
+  const filteredRoutes = useMemo(
+    () => routeStatusFilter === "ALL"
+      ? plannedRoutes
+      : plannedRoutes.filter((item) => item.order.order_statuses?.code === routeStatusFilter),
+    [plannedRoutes, routeStatusFilter],
+  );
+  const routeStatusCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    plannedRoutes.forEach((item) => {
+      const code = item.order.order_statuses?.code;
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+    });
+    return counts;
+  }, [plannedRoutes]);
+  const routePageCount = Math.max(1, Math.ceil(filteredRoutes.length / ROUTES_PER_PAGE));
+  const visibleRoutes = filteredRoutes.slice((routePage - 1) * ROUTES_PER_PAGE, routePage * ROUTES_PER_PAGE);
+  const openRoute = plannedRoutes.find((item) => item.order.id === openRouteOrderId) ?? null;
   const selectedOrder = unplannedOrders.find((item) => item.order.id === selectedOrderId)?.order ?? null;
   const selectedOrderRoutingReady = Boolean(
     selectedOrder && hasRoutingAddress(selectedOrder.pickup_address) && hasRoutingAddress(selectedOrder.delivery_address),
@@ -233,6 +352,10 @@ export function WarehouseManagementPage(): React.JSX.Element {
   useEffect(() => {
     if (warehousePage > warehousePageCount) setWarehousePage(warehousePageCount);
   }, [warehousePage, warehousePageCount]);
+
+  useEffect(() => {
+    if (routePage > routePageCount) setRoutePage(routePageCount);
+  }, [routePage, routePageCount]);
 
   useEffect(() => {
     if (!isAddWarehouseOpen) return;
@@ -420,7 +543,7 @@ export function WarehouseManagementPage(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-dt-bg text-dt-text">
-      <main className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
+      <main className="mx-auto flex w-full max-w-[1440px] flex-col px-5 py-6 md:px-8 md:py-8">
         <PageHeader
           heading="Kho và điều phối tuyến"
           subtitle="Quản lý kho theo khu vực, chia chặng vận chuyển và theo dõi luồng nhập/xuất kho của từng đơn hàng."
@@ -450,7 +573,7 @@ export function WarehouseManagementPage(): React.JSX.Element {
           </p>
         ) : null}
 
-        <div className="mt-6">
+        <div className="order-3 mt-6">
           <Card className="gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -526,7 +649,7 @@ export function WarehouseManagementPage(): React.JSX.Element {
           </Card>
         </div>
 
-        <Card className="mt-5 gap-4">
+        <Card className="order-2 mt-5 gap-4">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><CardLabel>Theo dõi và điều chỉnh tuyến</CardLabel><p className="mt-1 text-sm font-semibold">Hệ thống tự động lập tuyến tối ưu theo mạng kho</p></div><div className="flex items-center gap-2"><Button type="button" variant="secondary" disabled={saving} onClick={() => void createAllRoutes()}><Route size={14} /> Lập tuyến tất cả</Button><Route className="text-dt-yellow" size={20} /></div></div>
           <div className="rounded-md border border-sky-400/25 bg-sky-400/5 p-3 text-[11px] leading-5 text-sky-100">
             Đơn mới được tự động chọn kho con gần địa chỉ, đi qua kho cha và trung tâm vùng khi cần. Điều phối viên chỉ cần theo dõi tiến độ, phân công shipper và điều chỉnh các trường hợp ngoại lệ. Danh sách bên dưới chỉ dành cho đơn cũ chưa có tuyến hoặc đơn cần lập bổ sung.
@@ -543,11 +666,73 @@ export function WarehouseManagementPage(): React.JSX.Element {
           <div className="grid gap-3 rounded-md border border-dt-border bg-dt-panel2 p-3 text-[11px] text-dt-muted md:grid-cols-3"><span className="flex items-center gap-1.5"><MapPin size={13} className="text-dt-yellow" /> Người gửi → kho con lấy hàng</span><span className="flex items-center gap-1.5"><Boxes size={13} className="text-sky-300" /> Kho tỉnh → hub vùng khi khác vùng</span><span className="flex items-center gap-1.5"><Truck size={13} className="text-dt-green" /> Kho tỉnh → kho con → người nhận</span></div>
         </Card>
 
-        <Card className="mt-5 gap-4">
-          <div className="flex items-start justify-between gap-3"><div><CardLabel>Chặng đang xử lý</CardLabel><p className="mt-1 text-sm font-semibold">{currentUser?.roleCode === RoleCode.ADMIN ? "Phân công và ghi nhận nhập/xuất kho" : "Phân công chặng lấy/giao và theo dõi tiến độ"}</p></div><Truck className="text-dt-yellow" size={20} /></div>
-          {plannedRoutes.length === 0 ? <p className="rounded-md bg-dt-panel2 p-4 text-[12px] text-dt-muted">Chưa có đơn nào được phân tuyến.</p> : <div className="space-y-4">{plannedRoutes.map((routeItem) => <section key={routeItem.order.id} className="rounded-dt border border-dt-border bg-dt-panel2 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-[13px] font-semibold text-dt-yellow"><ClipboardList size={15} /> {routeItem.order.tracking_code}</p><p className="mt-1 text-[11px] text-dt-muted">{addressLabel(routeItem.order.pickup_address)} <ArrowRight className="mx-1 inline" size={12} /> {addressLabel(routeItem.order.delivery_address)}</p></div><span className="rounded-full bg-dt-yellow/10 px-2.5 py-1 text-[10px] text-dt-yellow">{routeItem.legs.length} chặng</span></div><div className="mt-4 space-y-2">{routeItem.legs.map((leg) => { const staffWarehouseId = operationalWarehouseId(leg); const legStaff = staffWarehouseId ? staff.filter((member) => member.warehouse_id === staffWarehouseId) : []; return <div key={leg.id} className="rounded-dt border border-dt-border bg-dt-panel p-3"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[11px] font-semibold">Chặng {leg.sequence_no}: {legTypeLabel(leg.leg_type, leg.is_return)}</span><span className={`rounded-full px-2 py-1 text-[10px] ${statusClass(leg.status)}`}>{legStatusLabel(leg.status)}</span></div><p className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-dt-muted">{leg.from_warehouse ? warehouseLabel(leg.from_warehouse) : "Người gửi"}<ArrowRight size={12} />{leg.to_warehouse ? warehouseLabel(leg.to_warehouse) : leg.is_return ? "Người gửi (hoàn hàng)" : "Người nhận"}</p>{leg.updated_at ? <p className="mt-1 text-[10px] text-dt-muted">Cập nhật {formatDateTime(leg.updated_at)}</p> : null}</div><div className="flex flex-wrap items-center gap-2">{canAssignShipper(leg) ? <select aria-label={`Phân công chặng ${leg.sequence_no}`} value={leg.assigned_staff_id ?? ""} onChange={(event) => void assignLeg(leg.id, event.target.value)} disabled={saving || leg.status === ShipmentLegStatusCode.COMPLETED || leg.status === ShipmentLegStatusCode.CANCELLED} className="h-9 min-w-[190px] rounded-dt border border-dt-border bg-dt-panel2 px-2 text-[11px] text-dt-text"><option value="" className="bg-dt-panel2">Chọn nhân viên</option>{legStaff.map((member) => <option key={member.id} value={member.id} className="bg-dt-panel2">{member.full_name}{member.phone ? ` · ${member.phone}` : ""}{member.warehouse ? ` · ${member.warehouse.code}` : ""}</option>)}</select> : <span className="text-[10px] text-dt-muted">Nhân viên kho xử lý chặng trung chuyển</span>}{canAssignShipper(leg) && leg.status === ShipmentLegStatusCode.PENDING && leg.leg_type === ShipmentLegType.LAST_MILE ? <span className="text-[10px] text-dt-muted">Chờ hàng nhập kho đích</span> : null}{leg.status === ShipmentLegStatusCode.FAILED && leg.leg_type === ShipmentLegType.LAST_MILE ? <span className="text-[10px] text-red-300">Giao thất bại lần {leg.attempt_no} · phân công lại sau khi kho nhận lại hàng</span> : null}{leg.status === ShipmentLegStatusCode.FAILED && leg.leg_type === ShipmentLegType.PICKUP ? <span className="text-[10px] text-red-300">Lấy hàng thất bại · cần phân công lại</span> : null}{currentUser?.roleCode === RoleCode.ADMIN ? renderLegAction(leg) : null}</div></div></div>})}</div></section>)}</div>}
+        <Card className="order-1 mt-5 gap-4">
+          <div className="flex items-start justify-between gap-3"><div><CardLabel>Đơn hàng đã lập tuyến</CardLabel><p className="mt-1 text-sm font-semibold">Chọn một đơn để xem các chặng và phân công</p></div><Truck className="text-dt-yellow" size={20} /></div>
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+            <div role="group" aria-label="Lọc đơn hàng theo trạng thái" className="flex min-w-max gap-2">
+              {ORDER_STATUS_FILTERS.map((status) => {
+                const active = routeStatusFilter === status.value;
+                const count = status.value === "ALL" ? plannedRoutes.length : routeStatusCounts.get(status.value) ?? 0;
+                return <button
+                  key={status.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => { setRouteStatusFilter(status.value); setRoutePage(1); }}
+                  className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-[11px] transition ${active ? "border-dt-yellow bg-dt-yellow text-dt-bg" : "border-dt-border bg-dt-panel2 text-dt-muted hover:text-dt-text"}`}
+                >
+                  <span>{status.label}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-black/10" : "bg-white/5"}`}>{count}</span>
+                </button>;
+              })}
+            </div>
+          </div>
+          {filteredRoutes.length === 0 ? <p className="rounded-md bg-dt-panel2 p-4 text-[12px] text-dt-muted">{plannedRoutes.length === 0 ? "Chưa có đơn nào được phân tuyến." : "Không có đơn hàng ở trạng thái này."}</p> : <>
+            <div className="overflow-x-auto rounded-md border border-dt-border">
+              <table id="planned-orders-table" className="w-full min-w-[980px] text-left text-[11px]">
+                <thead className="bg-dt-panel2 text-[10px] uppercase tracking-wide text-dt-muted">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Mã đơn hàng</th>
+                    <th className="px-4 py-3 font-medium">Tên hàng hóa</th>
+                    <th className="px-4 py-3 font-medium">Địa chỉ nhận</th>
+                    <th className="px-4 py-3 font-medium">Địa chỉ giao</th>
+                    <th className="px-4 py-3 font-medium">Trạng thái</th>
+                    <th className="px-4 py-3 text-right font-medium">Tuyến</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dt-border">
+                  {visibleRoutes.map((routeItem) => {
+                    const order = routeItem.order;
+                    const itemNames = order.order_items?.length
+                      ? order.order_items.map((item) => `${item.item_name} ×${item.quantity}`).join(", ")
+                      : "Chưa có thông tin hàng hóa";
+                    const pickupAddress = addressLabel(order.pickup_address);
+                    const deliveryAddress = addressLabel(order.delivery_address);
+                    const openOrder = (): void => setOpenRouteOrderId(order.id);
+                    return <tr key={order.id} role="button" tabIndex={0} aria-label={`Mở chi tiết đơn ${order.tracking_code}`} onClick={openOrder} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openOrder(); } }} className="cursor-pointer bg-dt-panel transition hover:bg-dt-panel2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-dt-yellow">
+                      <td className="px-4 py-3 font-semibold text-dt-yellow">{order.tracking_code}</td>
+                      <td className="max-w-[220px] truncate px-4 py-3 text-dt-text" title={itemNames}>{itemNames}</td>
+                      <td className="max-w-[260px] truncate px-4 py-3 text-dt-muted" title={pickupAddress}>{pickupAddress}</td>
+                      <td className="max-w-[260px] truncate px-4 py-3 text-dt-muted" title={deliveryAddress}>{deliveryAddress}</td>
+                      <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[10px] ${orderStatusClass(order.order_statuses)}`}>{STATUS_LABEL[order.order_statuses?.code ?? ""] ?? order.order_statuses?.name ?? "Chưa cập nhật"}</span></td>
+                      <td className="px-4 py-3 text-right text-dt-muted"><span className="inline-flex items-center justify-end gap-1 text-dt-yellow">{routeItem.legs.length} chặng <ChevronRight size={14} /></span></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {filteredRoutes.length > ROUTES_PER_PAGE ? <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dt-border pt-3 text-[11px] text-dt-muted">
+              <span>Hiển thị {(routePage - 1) * ROUTES_PER_PAGE + 1}–{Math.min(routePage * ROUTES_PER_PAGE, filteredRoutes.length)} trong tổng số {filteredRoutes.length} đơn</span>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" className="px-3 py-2 text-[11px]" disabled={routePage === 1} onClick={() => setRoutePage((value) => Math.max(1, value - 1))}><ChevronLeft size={14} /> Trước</Button>
+                <span className="min-w-[76px] text-center">Trang {routePage}/{routePageCount}</span>
+                <Button variant="secondary" className="px-3 py-2 text-[11px]" disabled={routePage === routePageCount} onClick={() => setRoutePage((value) => Math.min(routePageCount, value + 1))}>Sau <ChevronRight size={14} /></Button>
+              </div>
+            </div> : null}
+          </>}
         </Card>
-        <p className="mt-4 flex items-start gap-2 text-[11px] leading-5 text-dt-muted"><CheckCircle2 className="mt-0.5 shrink-0 text-dt-green" size={14} />{currentUser?.roleCode === RoleCode.ADMIN ? "Admin có thể ghi nhận mốc nhập/xuất kho để kiểm soát toàn hệ thống. Điều phối viên phân công shipper ở chặng lấy hàng/chặng cuối; nhân viên kho xử lý các chặng trung chuyển." : "Điều phối viên chỉ phân công shipper ở chặng lấy hàng hoặc giao cuối tại kho được gán. Các chặng trung chuyển do nhân viên kho xác nhận nhập/xuất."}</p>
+        <p className="order-4 mt-4 flex items-start gap-2 text-[11px] leading-5 text-dt-muted"><CheckCircle2 className="mt-0.5 shrink-0 text-dt-green" size={14} />{currentUser?.roleCode === RoleCode.ADMIN ? "Admin có thể ghi nhận mốc nhập/xuất kho để kiểm soát toàn hệ thống. Điều phối viên phân công shipper ở chặng lấy hàng/chặng cuối; nhân viên kho xử lý các chặng trung chuyển." : "Điều phối viên chỉ phân công shipper ở chặng lấy hàng hoặc giao cuối tại kho được gán. Các chặng trung chuyển do nhân viên kho xác nhận nhập/xuất."}</p>
+
+        {openRoute ? <RouteDetailsModal routeItem={openRoute} staff={staff} currentUser={currentUser} saving={saving} onClose={() => setOpenRouteOrderId(null)} onAssign={(legId, staffId) => void assignLeg(legId, staffId)} renderLegAction={renderLegAction} /> : null}
 
         {isAddWarehouseOpen ? (
           <div

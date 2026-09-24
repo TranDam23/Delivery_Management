@@ -45,6 +45,7 @@ interface PlanningOrder {
     district: string | null;
     province: string | null;
   } | null;
+  order_items?: Array<{ id: string; item_name: string; quantity: number; weight: number | null }>;
 }
 
 interface PlanningLeg {
@@ -109,7 +110,7 @@ function orderSelect(): string {
     delivery_address:addresses!orders_delivery_address_id_fkey(address_line, ward, district, province)`;
 }
 
-async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWarehouseScope): Promise<
+async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWarehouseScope, includeItems = false): Promise<
   | { items: RouteItem[]; error: null }
   | { items: []; error: string }
 > {
@@ -126,6 +127,16 @@ async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWare
 
   const orders = (ordersRaw ?? []) as unknown as PlanningOrder[];
   const legs = (legsRaw ?? []) as PlanningLeg[];
+  const itemRowsResult = includeItems && orders.length > 0
+    ? await supabase.from("order_items").select("id, order_id, item_name, quantity, weight").in("order_id", orders.map((order) => order.id))
+    : { data: [], error: null };
+  if (itemRowsResult.error) return { items: [], error: itemRowsResult.error.message };
+  const itemsByOrder = new Map<string, NonNullable<PlanningOrder["order_items"]>>();
+  for (const row of itemRowsResult.data ?? []) {
+    const current = itemsByOrder.get(row.order_id) ?? [];
+    current.push({ id: row.id, item_name: row.item_name, quantity: row.quantity, weight: row.weight });
+    itemsByOrder.set(row.order_id, current);
+  }
   const warehouseIds = Array.from(
     new Set(
       legs.flatMap((leg) => [leg.from_warehouse_id, leg.to_warehouse_id]).filter(Boolean) as string[],
@@ -168,7 +179,7 @@ async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWare
   });
 
   const items: RouteItem[] = orders.map((order) => ({
-    order,
+    order: includeItems ? { ...order, order_items: itemsByOrder.get(order.id) ?? [] } : order,
     legs: (legsByOrder.get(order.id) ?? []).map((leg) => ({
       ...leg,
       from_warehouse: leg.from_warehouse_id ? warehouseById.get(leg.from_warehouse_id) ?? null : null,
@@ -243,7 +254,7 @@ export async function GET(request: NextRequest) {
     return ok([]);
   }
 
-  const result = await getRouteItems(orderId, auth.roleCode === RoleCode.DISPATCHER ? warehouseScope : undefined);
+  const result = await getRouteItems(orderId, auth.roleCode === RoleCode.DISPATCHER ? warehouseScope : undefined, true);
   if (result.error) return fail(result.error, 500);
 
   const items = result.items.filter((item) => {

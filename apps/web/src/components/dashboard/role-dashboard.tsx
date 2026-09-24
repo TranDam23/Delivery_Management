@@ -30,6 +30,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { CustomerHome } from "@/components/dashboard/customer-home";
 import { ROLE_LABEL } from "@/lib/role-routing";
+import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
 
 interface RoleDashboardProps {
   roleCode: RoleCodeType;
@@ -65,7 +66,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "COD & Đối soát", icon: WalletCards },
   { label: "Phân tích", icon: BarChart3 },
   { label: "Báo cáo", icon: FileCheck2 },
-  { label: "Thông báo", icon: Bell, badge: "3" },
+  { label: "Thông báo", icon: Bell, href: "/dashboard/admin/notifications" },
   { label: "Cài đặt", icon: Settings },
 ];
 
@@ -81,14 +82,14 @@ export const DISPATCHER_NAV: NavItem[] = [
   // dieu phoi vien chi nhan canh bao de phoi hop khi phat sinh bat thuong.
   { label: "Hoàn hàng", icon: Route },
   { label: "Cảnh báo", icon: AlertTriangle },
-  { label: "Thông báo", icon: Bell },
+  { label: "Thông báo", icon: Bell, href: "/dashboard/dispatcher/notifications" },
   { label: "Tài khoản", icon: Settings, href: "/dashboard/dispatcher/account" },
 ];
 
 export const WAREHOUSE_STAFF_NAV: NavItem[] = [
   { label: "Tổng quan", icon: LayoutDashboard, href: "/dashboard/warehouse" },
   { label: "Vận hành kho", icon: WarehouseIcon, href: "/dashboard/warehouse/operations" },
-  { label: "Thông báo", icon: Bell },
+  { label: "Thông báo", icon: Bell, href: "/dashboard/warehouse/notifications" },
   { label: "Tài khoản", icon: Settings, href: "/dashboard/warehouse/account" },
 ];
 
@@ -181,7 +182,7 @@ export function DesktopSidebar({
                   <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${active ? "bg-black/15 text-dt-bg" : "bg-dt-panel text-dt-muted"}`}>
                     {item.badge}
                   </span>
-                ) : null}
+                ) : item.label === "Thông báo" ? <NotificationUnreadBadge /> : null}
               </div>
             );
             return item.href ? <Link key={item.label} href={item.href} className="block">{content}</Link> : content;
@@ -252,10 +253,10 @@ function DesktopHome({
                 Tìm kiếm nhanh...
                 <span className="ml-auto rounded bg-dt-panel2 px-1.5 py-0.5 text-[9px]">Ctrl K</span>
               </div>
-              <button type="button" aria-label="Thông báo" className="relative flex h-9 w-9 items-center justify-center rounded-md border border-dt-border bg-dt-panel text-dt-muted hover:text-dt-text">
+              <Link href={`/dashboard/${roleCode === RoleCode.ADMIN ? "admin" : "dispatcher"}/notifications`} aria-label="Thông báo" className="relative flex h-9 w-9 items-center justify-center rounded-md border border-dt-border bg-dt-panel text-dt-muted hover:text-dt-text">
                 <Bell size={16} strokeWidth={1.8} />
-                <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-dt-yellow" />
-              </button>
+                <NotificationUnreadBadge dot />
+              </Link>
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-dt-yellow text-[10px] font-bold text-dt-bg">AD</span>
             </div>
           </header>
