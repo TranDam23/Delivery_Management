@@ -19,8 +19,7 @@ typechain-types/
 
 # Env files
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 
 # Expo / React Native
@@ -29,6 +28,8 @@ typechain-types/
 *.jks
 *.p8
 *.p12
+*.pem
+*.pfx
 *.key
 *.mobileprovision
 ios/Pods/
@@ -45,10 +46,9 @@ expo-env.d.ts
 # Vercel
 .vercel/
 
-# Claude Code: cấu hình cục bộ trên từng máy
-.claude/launch.json
-.claude/settings.local.json
-.claude/worktrees/
+# Local Codex and Claude workspaces
+.claude/
+.codex/
 CLAUDE.local.md
 
 # Hardhat
@@ -72,5 +72,9 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# Local document previews and project backup
+/.codex-docx-render/
+/Delivery_Management.rar
 
 /DeliverTrust UI Generator/
