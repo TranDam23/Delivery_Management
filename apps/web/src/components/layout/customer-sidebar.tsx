@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
 
 /**
  * Menu khach hang dung chung cho ca luong gui va nhan. Muc nao chua
@@ -18,7 +19,7 @@ const CUSTOMER_NAV: { label: string; href?: string }[] = [
   { label: "Sổ địa chỉ", href: "/contacts" },
   { label: "Theo dõi đơn hàng", href: "/orders/track" },
   { label: "COD" },
-  { label: "Thông báo" },
+  { label: "Thông báo", href: "/notifications" },
   { label: "Hồ sơ", href: "/profile" },
 ];
 
@@ -40,6 +41,7 @@ export function CustomerSidebar(): React.JSX.Element {
                 •
               </span>
               <span className={clsx("text-[11px]", active && "font-medium")}>{item.label}</span>
+              {item.label === "Thông báo" && <NotificationUnreadBadge />}
             </>
           );
 

@@ -15,7 +15,6 @@ const confirmReceiptSchema = z.object({
 });
 
 interface Participant {
-  user_id: string | null;
   phone: string;
 }
 
@@ -23,7 +22,6 @@ interface OrderConfirmationData {
   id: string;
   tracking_code: string;
   receiver: Participant | Participant[] | null;
-  sender: Participant | Participant[] | null;
   order_statuses: { code: string } | { code: string }[] | null;
 }
 
@@ -42,7 +40,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const supabase = getSupabaseServiceClient();
   const { data: orderRaw, error: orderError } = await supabase
     .from("orders")
-    .select("id, tracking_code, receiver:contacts!orders_receiver_id_fkey(user_id, phone), sender:contacts!orders_sender_id_fkey(user_id, phone), order_statuses(code)")
+    .select("id, tracking_code, receiver:contacts!orders_receiver_id_fkey(phone), order_statuses(code)")
     .eq("id", orderId)
     .maybeSingle();
   if (orderError) return fail(orderError.message, 500);
@@ -50,7 +48,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const order = orderRaw as OrderConfirmationData;
   const receiver = Array.isArray(order.receiver) ? order.receiver[0] ?? null : order.receiver;
-  const sender = Array.isArray(order.sender) ? order.sender[0] ?? null : order.sender;
   const status = Array.isArray(order.order_statuses) ? order.order_statuses[0] ?? null : order.order_statuses;
   if (status?.code !== OrderStatusCode.DELIVERED) {
     return fail("Chỉ có thể xác nhận sau khi đơn hàng được cập nhật đã giao thành công", 409);
@@ -64,8 +61,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .maybeSingle();
     if (viewerError) return fail(viewerError.message, 500);
     const viewerPhone = normalizePhone(typeof viewer?.phone === "string" ? viewer.phone : "");
-    const isReceiver = receiver?.user_id === auth.userId
-      || (viewerPhone.length > 0 && normalizePhone(receiver?.phone ?? "") === viewerPhone);
+    // contact.user_id is the address-book owner, not the recipient account.
+    const isReceiver = viewerPhone.length > 0 && normalizePhone(receiver?.phone ?? "") === viewerPhone;
     if (!isReceiver) return fail("Tài khoản không phải người nhận của đơn hàng", 403);
   }
 
@@ -115,16 +112,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     performedBy: auth.userId,
     payload: { deliveryId: delivery.id, confirmedAt, note: parsed.data.note ?? null },
   });
-
-  if (sender?.user_id && sender.user_id !== auth.userId) {
-    await supabase.from("notifications").insert({
-      user_id: sender.user_id,
-      order_id: orderId,
-      type: "delivery_success",
-      title: "Người nhận đã xác nhận",
-      message: `Đơn ${order.tracking_code} đã được người nhận xác nhận đã nhận hàng.`,
-    });
-  }
 
   return ok({ confirmed_at: confirmedAt, already_confirmed: false });
 }
