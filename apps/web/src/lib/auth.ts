@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
 import type { NextRequest } from "next/server";
 import { normalizeRoleCode, type AuthTokenPayload } from "@delivery/shared";
@@ -24,8 +25,25 @@ export async function verifyPassword(
   return bcrypt.compare(plainPassword, passwordHash);
 }
 
-export function signAuthToken(payload: AuthTokenPayload): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
+export function hashRefreshToken(refreshToken: string): string {
+  return createHash("sha256").update(refreshToken, "utf8").digest("hex");
+}
+
+export function signAuthToken(
+  payload: AuthTokenPayload & { tokenType: "access" | "refresh" },
+): string {
+  return jwt.sign(payload, getJwtSecret(), {
+    expiresIn: payload.tokenType === "access" ? "15m" : "7d",
+  });
+}
+
+export function getAuthTokenExpiresAt(token: string): string {
+  const decoded = jwt.decode(token);
+  if (!decoded || typeof decoded !== "object" || typeof decoded.exp !== "number") {
+    throw new Error("Invalid auth token expiration");
+  }
+
+  return new Date(decoded.exp * 1000).toISOString();
 }
 
 export function verifyAuthToken(token: string): AuthTokenPayload {
@@ -36,11 +54,15 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
 
   const payload = decoded as Record<string, unknown>;
   const roleCode = normalizeRoleCode(payload.roleCode);
-  if (typeof payload.userId !== "string" || !roleCode) {
+  if (
+    typeof payload.userId !== "string" ||
+    !roleCode ||
+    (payload.tokenType !== "access" && payload.tokenType !== "refresh")
+  ) {
     throw new Error("Invalid auth token claims");
   }
 
-  return { userId: payload.userId, roleCode };
+  return { userId: payload.userId, roleCode, tokenType: payload.tokenType };
 }
 
 /** Doc va xac thuc Bearer token tu header Authorization cua request (dung boi web + mobile). */
@@ -49,7 +71,8 @@ export function getAuthFromRequest(request: NextRequest): AuthTokenPayload | nul
   if (!header?.startsWith("Bearer ")) return null;
 
   try {
-    return verifyAuthToken(header.slice("Bearer ".length));
+    const payload = verifyAuthToken(header.slice("Bearer ".length));
+    return payload.tokenType === "access" ? payload : null;
   } catch {
     return null;
   }
