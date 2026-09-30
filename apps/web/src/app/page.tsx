@@ -50,6 +50,9 @@ export default function HomePage(): React.JSX.Element {
             <a href="#minh-bach" className="hover:text-dt-text">Blockchain</a>
           </nav>
           <div className="flex items-center gap-3">
+            <Link href="/register" className="hidden rounded-md border border-dt-border px-3 py-2.5 text-[11px] text-dt-muted transition hover:border-dt-yellow/50 hover:text-dt-text sm:inline-flex">
+              Đăng ký
+            </Link>
             <Link href="/login" className="inline-flex items-center gap-2 rounded-md bg-dt-yellow px-4 py-2.5 text-[11px] font-semibold text-dt-bg transition hover:brightness-110">
               Đăng nhập <ArrowRight size={14} strokeWidth={2} />
             </Link>

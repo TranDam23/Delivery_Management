@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { RoleCode, WarehouseLevelCode, WarehouseStatusCode } from "@delivery/shared";
+import { adminUserDetailController } from "@/controllers/admin-user-detail.controller";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -12,6 +13,14 @@ interface RouteParams {
 const assignmentSchema = z.object({
   warehouse_id: z.string().uuid().nullable(),
 });
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  return adminUserDetailController(request, id);
+}
 
 /** PATCH /api/admin/users/:id — gán hoặc bỏ gán kho cho tài khoản vận hành. */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
