@@ -80,7 +80,6 @@ export interface OrderEvent {
 }
 
 export interface TrackingOrder {
-  id: string;
   tracking_code: string;
   service_type: string;
   created_at: string;
@@ -93,7 +92,7 @@ export interface TrackingResult {
   warehouseEvents: Array<{
     event_time: string;
     event_type: string;
-    note: string | null;
+    note?: string | null;
     warehouse: { code: string; name: string; province: string } | null;
     leg: { sequence_no: number; leg_type: string } | null;
   }>;

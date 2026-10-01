@@ -48,6 +48,11 @@ export async function checkOrderViewAccess(
   if (accessError) return { allowed: false, error: accessError.message, status: 500 };
   if (!access) return { allowed: false, error: "Order not found", status: 404 };
 
+  const { data: guestOrder, error: guestError } = await supabase.from("guest_orders")
+    .select("order_id").eq("order_id", orderId).maybeSingle();
+  if (guestError) return { allowed: false, error: guestError.message, status: 500 };
+  const isGuestOrder = Boolean(guestOrder);
+
   const { data: viewer, error: viewerError } = await supabase
     .from("users")
     .select("phone, warehouse_id")
@@ -79,11 +84,11 @@ export async function checkOrderViewAccess(
     access.created_by === auth.userId ||
     access.sender?.user_id === auth.userId ||
     access.receiver?.user_id === auth.userId ||
-    isPhoneParticipant;
+    (!isGuestOrder && isPhoneParticipant);
   const canConfirmReceipt = auth.roleCode === RoleCode.ADMIN || (
     auth.roleCode === RoleCode.CUSTOMER && (
       access.receiver?.user_id === auth.userId ||
-      (viewerPhone.length > 0 && normalizePhone(access.receiver?.phone ?? "") === viewerPhone)
+      (!isGuestOrder && viewerPhone.length > 0 && normalizePhone(access.receiver?.phone ?? "") === viewerPhone)
     )
   );
 

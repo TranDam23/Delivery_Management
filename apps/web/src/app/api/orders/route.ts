@@ -110,6 +110,17 @@ async function findCustomerContactIds(
   return { ids: (contacts ?? []).map((contact) => contact.id), error: null };
 }
 
+async function excludeGuestOrderIds(supabase: ServiceSupabaseClient, ids: string[]) {
+  if (ids.length === 0) return { ids, error: null as string | null };
+  const guestIds = new Set<string>();
+  for (let index = 0; index < ids.length; index += 500) {
+    const { data, error } = await supabase.from("guest_orders").select("order_id").in("order_id", ids.slice(index, index + 500));
+    if (error) return { ids: [] as string[], error: error.message };
+    data?.forEach((row) => guestIds.add(row.order_id));
+  }
+  return { ids: ids.filter((id) => !guestIds.has(id)), error: null as string | null };
+}
+
 /** Lay ID don ma tai khoan duoc phep xem, khong tra ve toan bo orders. */
 async function findVisibleOrderIds(
   supabase: ServiceSupabaseClient,
@@ -132,8 +143,12 @@ async function findVisibleOrderIds(
       ]);
       if (sentOrders.error) return { ids: [], error: sentOrders.error.message };
       if (receivedOrders.error) return { ids: [], error: receivedOrders.error.message };
-      sentOrders.data?.forEach((order) => ids.add(order.id));
-      receivedOrders.data?.forEach((order) => ids.add(order.id));
+      const nonGuest = await excludeGuestOrderIds(supabase, [
+        ...(sentOrders.data ?? []).map((order) => order.id),
+        ...(receivedOrders.data ?? []).map((order) => order.id),
+      ]);
+      if (nonGuest.error) return { ids: [], error: nonGuest.error };
+      nonGuest.ids.forEach((id) => ids.add(id));
     }
   }
 
@@ -228,7 +243,13 @@ export async function GET(request: NextRequest) {
       return ok({ items: [], total: 0, page, pageSize });
     }
 
-    query = query.in(direction === "sent" ? "sender_id" : "receiver_id", contactIds);
+    const { data: contactOrders, error: contactOrdersError } = await supabase.from("orders")
+      .select("id").in(direction === "sent" ? "sender_id" : "receiver_id", contactIds);
+    if (contactOrdersError) return fail(contactOrdersError.message, 500);
+    const nonGuest = await excludeGuestOrderIds(supabase, (contactOrders ?? []).map((order) => order.id));
+    if (nonGuest.error) return fail(nonGuest.error, 500);
+    if (nonGuest.ids.length === 0) return ok({ items: [], total: 0, page, pageSize });
+    query = query.in("id", nonGuest.ids);
   } else if (auth.roleCode === RoleCode.DISPATCHER) {
     const warehouseScope = await getUserOperationalScope(auth);
     if (warehouseScope.error) return fail(warehouseScope.error, 500);

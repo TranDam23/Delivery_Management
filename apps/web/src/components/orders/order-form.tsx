@@ -40,6 +40,7 @@ type ContactSource = "addressBook" | "manual";
 interface ManualContactForm extends AddressMapValue {
   name: string;
   phone: string;
+  email: string;
   addressLine: string;
   ward: string;
   district: string;
@@ -49,6 +50,7 @@ interface ManualContactForm extends AddressMapValue {
 const EMPTY_MANUAL_CONTACT: ManualContactForm = {
   name: "",
   phone: "",
+  email: "",
   addressLine: "",
   ward: "",
   district: "",
@@ -95,6 +97,7 @@ function manualContactFromContact(contact: ContactWithDefaultAddress, address = 
   return {
     name: contact.name,
     phone: contact.phone,
+    email: contact.email ?? "",
     addressLine: address?.address_line ?? "",
     ward: address?.ward ?? "",
     district: address?.district ?? "",
@@ -175,6 +178,7 @@ function ManualContactFields({
           onChange={(event) => onChange("phone", event.target.value)}
         />
       </div>
+      {roleLabel === "người nhận" ? <TextField label="Email người nhận" type="email" value={value.email} onChange={(event) => onChange("email", event.target.value)} hint="Nhập email để người nhận xác thực và đánh giá hoặc phản ánh sau giao hàng." /> : null}
       <TextField
         label={addressLabel}
         required
@@ -217,13 +221,15 @@ async function ensureManualContact({
         type,
         name: input.name.trim(),
         phone: normalizedPhone,
+        email: input.email.trim().toLowerCase() || null,
       }),
     });
   } else {
-    const changes: { name?: string; type?: ContactType } = {};
+    const changes: { name?: string; type?: ContactType; email?: string } = {};
     if (contact.name !== input.name.trim()) changes.name = input.name.trim();
     if (type === ContactType.SENDER && !canBeSender(contact.type)) changes.type = ContactType.BOTH;
     if (type === ContactType.RECEIVER && !canBeReceiver(contact.type)) changes.type = ContactType.BOTH;
+    if (input.email.trim() && contact.email !== input.email.trim().toLowerCase()) changes.email = input.email.trim().toLowerCase();
 
     if (Object.keys(changes).length > 0) {
       contact = await apiFetch<ContactWithDefaultAddress>(`/api/contacts/${encodeURIComponent(contact.id)}`, {

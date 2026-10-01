@@ -4,6 +4,7 @@ import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getBlockchainReadOnlyContract } from "@/lib/blockchain/provider";
 import { hashEventPayload } from "@/lib/blockchain/record-event";
 import { ok, fail } from "@/lib/api-response";
+import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
 
 interface RouteParams {
   params: Promise<{ trackingCode: string }>;
@@ -27,14 +28,18 @@ interface DbBlockchainEvent {
  * Moi moc da confirmed duoc kiem tra 2 lop: payload luu trong DB bam lai
  * phai ra dung event_data_hash, va hash do phai ton tai tren chain.
  */
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const { trackingCode } = await params;
+  if (!/^[A-Za-z0-9-]{8,40}$/.test(trackingCode)) return fail("Mã vận đơn không hợp lệ", 400);
+  const slot = await takePublicLookupSlot(request);
+  if (slot === "limited") return fail("Bạn tra cứu quá nhiều lần. Vui lòng thử lại sau ít phút.", 429);
+  if (slot === "unavailable") return fail("Chưa thể đối chiếu Blockchain lúc này", 503);
   const supabase = getSupabaseServiceClient();
 
   const { data: order } = await supabase
     .from("orders")
     .select("id")
-    .eq("tracking_code", trackingCode)
+    .eq("tracking_code", trackingCode.toUpperCase())
     .maybeSingle();
   if (!order) return fail("Khong tim thay don hang", 404);
 
@@ -62,7 +67,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         : null;
       const onChain = onChainHashes.has(event.event_data_hash.toLowerCase());
       return {
-        ...event,
+        event_type: event.event_type,
+        event_data_hash: event.event_data_hash,
+        transaction_hash: event.transaction_hash,
+        block_number: event.block_number,
+        tx_status: event.tx_status,
+        created_at: event.created_at,
         payload_hash_matches: payloadHashMatches,
         on_chain: onChain,
         verified: event.tx_status === BlockchainTransactionStatus.CONFIRMED && onChain && payloadHashMatches !== false,
@@ -76,9 +86,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       onChainEvents,
       pendingCount: events.filter((event) => event.tx_status === BlockchainTransactionStatus.PENDING).length,
       failedCount: events.filter((event) => event.tx_status === BlockchainTransactionStatus.FAILED).length,
-      matched: confirmed.every((event) => event.verified) && confirmed.length === onChainEvents.length,
+      confirmedCount: confirmed.length,
+      matched: confirmed.length > 0 && confirmed.every((event) => event.verified) && confirmed.length === onChainEvents.length,
     });
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : "Blockchain query failed", 502);
+  } catch {
+    return fail("Chưa thể đối chiếu Blockchain lúc này", 502);
   }
 }

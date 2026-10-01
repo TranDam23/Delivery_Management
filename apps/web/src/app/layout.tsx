@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PublicNavigation } from "@/components/layout/public-navigation";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +13,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
     <html lang="vi">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased"><PublicNavigation />{children}</body>
     </html>
   );
 }
