@@ -34,7 +34,6 @@ function sortVietnamese(values: Iterable<string>): string[] {
  */
 export async function GET(request: NextRequest) {
   const auth = getAuthFromRequest(request);
-  if (!auth) return fail("Unauthorized", 401);
 
   const supabase = getSupabaseServiceClient();
   const warehouseRows: LocationRow[] = [];
@@ -53,14 +52,17 @@ export async function GET(request: NextRequest) {
     if (!result.data || result.data.length < pageSize) break;
   }
 
-  for (let from = 0; ; from += pageSize) {
-    const result = await supabase
-      .from("addresses")
-      .select("province, district, ward")
-      .range(from, from + pageSize - 1);
-    if (result.error) return fail(result.error.message, 500);
-    addressRows.push(...((result.data ?? []) as LocationRow[]));
-    if (!result.data || result.data.length < pageSize) break;
+  // Khách vãng lai chỉ nhận danh mục từ kho, không dùng địa chỉ riêng của khách khác.
+  if (auth) {
+    for (let from = 0; ; from += pageSize) {
+      const result = await supabase
+        .from("addresses")
+        .select("province, district, ward")
+        .range(from, from + pageSize - 1);
+      if (result.error) return fail(result.error.message, 500);
+      addressRows.push(...((result.data ?? []) as LocationRow[]));
+      if (!result.data || result.data.length < pageSize) break;
+    }
   }
 
   const provinces = new Set<string>(VIETNAM_PROVINCES);

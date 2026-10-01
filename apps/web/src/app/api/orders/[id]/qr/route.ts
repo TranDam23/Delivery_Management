@@ -30,6 +30,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   if (error) return fail(error.message, 500);
   if (!order) return fail("Order not found", 404);
 
+  const { data: guestOrder, error: guestError } = await supabase.from("guest_orders")
+    .select("order_id").eq("order_id", id).maybeSingle();
+  if (guestError) return fail(guestError.message, 500);
+
   const canViewAll = auth.roleCode === RoleCode.ADMIN;
   const sender = Array.isArray(order.sender) ? order.sender[0] : order.sender;
   const receiver = Array.isArray(order.receiver) ? order.receiver[0] : order.receiver;
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     order.created_by === auth.userId ||
     sender?.user_id === auth.userId ||
     receiver?.user_id === auth.userId ||
-    (viewerPhone.length > 0 &&
+    (!guestOrder && viewerPhone.length > 0 &&
       (normalizePhone(sender?.phone ?? "") === viewerPhone ||
         normalizePhone(receiver?.phone ?? "") === viewerPhone));
   if (!canView) return fail("Forbidden", 403);

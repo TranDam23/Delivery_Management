@@ -54,6 +54,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   if (auth.roleCode !== RoleCode.ADMIN) {
+    const { data: guestOrder, error: guestError } = await supabase.from("guest_orders")
+      .select("order_id").eq("order_id", orderId).maybeSingle();
+    if (guestError) return fail(guestError.message, 500);
+    if (guestOrder) return fail("Đơn khách vãng lai chưa hỗ trợ xác nhận qua tài khoản chỉ khớp số điện thoại.", 403);
     const { data: viewer, error: viewerError } = await supabase
       .from("users")
       .select("phone")

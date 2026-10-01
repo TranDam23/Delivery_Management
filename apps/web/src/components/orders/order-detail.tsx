@@ -4,7 +4,6 @@ import { ArrowLeft, Box, CheckCircle2, Download, MapPin, QrCode, ShieldCheck, Tr
 import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { OrderStatusCode } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -22,8 +21,6 @@ import {
 interface OrderDetailResponse {
   order: OrderDetail;
   events: OrderEvent[];
-  receiverConfirmation?: { confirmedAt: string | null };
-  canConfirmReceipt?: boolean;
 }
 
 interface QrResponse {
@@ -36,7 +33,6 @@ export function OrderDetailPage({ orderId }: { orderId: string }): React.JSX.Ele
   const [qr, setQr] = useState<QrResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingQr, setLoadingQr] = useState(false);
-  const [confirmingReceipt, setConfirmingReceipt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
 
@@ -70,22 +66,6 @@ export function OrderDetailPage({ orderId }: { orderId: string }): React.JSX.Ele
     }
   }
 
-  async function confirmReceipt(): Promise<void> {
-    setConfirmingReceipt(true);
-    setError(null);
-    try {
-      await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/confirm-receipt`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      await loadOrder();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể xác nhận đã nhận hàng");
-    } finally {
-      setConfirmingReceipt(false);
-    }
-  }
-
   if (loading) {
     return <Card><p className="text-[13px] text-dt-muted">Đang tải chi tiết đơn hàng...</p></Card>;
   }
@@ -93,14 +73,13 @@ export function OrderDetailPage({ orderId }: { orderId: string }): React.JSX.Ele
     return <Card><p className="text-[13px] text-dt-red">{error ?? "Không có dữ liệu đơn hàng."}</p><Link href="/customer" className="text-[12px] text-dt-yellow hover:underline">Về tổng quan</Link></Card>;
   }
 
-  const { order, events, receiverConfirmation, canConfirmReceipt } = result;
+  const { order, events } = result;
   const sender = relationValue(order.sender);
   const receiver = relationValue(order.receiver);
   const pickupAddress = relationValue(order.pickup_address);
   const deliveryAddress = relationValue(order.delivery_address);
   const pickupWarehouse = relationValue(order.pickup_warehouse);
   const deliveryWarehouse = relationValue(order.delivery_warehouse);
-  const currentStatusCode = relationValue(order.order_statuses)?.code;
   const timeline: OrderEvent[] = events.length > 0 ? events : [{ event_time: order.created_at, order_statuses: { code: "CREATED", name: "" }, note: "Đơn hàng được tạo" }];
 
   return (
@@ -113,7 +92,7 @@ export function OrderDetailPage({ orderId }: { orderId: string }): React.JSX.Ele
 
       <section className="flex flex-col gap-4 rounded-dt border border-dt-yellow/30 bg-dt-yellow/5 p-5 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-dt-yellow text-dt-bg"><PackageIcon /></span><div><p className="text-[11px] uppercase tracking-wide text-dt-muted">Trạng thái hiện tại</p><p className="mt-1 text-lg font-semibold">{statusLabel(order.order_statuses)}</p><p className="mt-1 text-[11px] text-dt-muted">Dịch vụ: {order.service_type}</p></div></div>
-        <div className="flex flex-wrap items-center justify-end gap-2"><Link href={`/orders/track/${encodeURIComponent(order.tracking_code)}`} className={buttonClassName("secondary")}><Truck size={14} /> Xem hành trình</Link><Button onClick={() => void loadQr()} disabled={loadingQr}><QrCode size={14} />{loadingQr ? "Đang tạo QR..." : "Hiện QR"}</Button>{currentStatusCode === OrderStatusCode.DELIVERED && canConfirmReceipt && !receiverConfirmation?.confirmedAt ? <Button onClick={() => void confirmReceipt()} disabled={confirmingReceipt}><CheckCircle2 size={14} />{confirmingReceipt ? "Đang xác nhận..." : "Xác nhận đã nhận hàng"}</Button> : null}{receiverConfirmation?.confirmedAt ? <span className="text-[10px] text-dt-green">Người nhận đã xác nhận lúc {formatDateTime(receiverConfirmation.confirmedAt)}</span> : null}</div>
+        <div className="flex flex-wrap items-center justify-end gap-2"><Link href={`/orders/track/${encodeURIComponent(order.tracking_code)}`} className={buttonClassName("secondary")}><Truck size={14} /> Xem hành trình và phản hồi</Link><Button onClick={() => void loadQr()} disabled={loadingQr}><QrCode size={14} />{loadingQr ? "Đang tạo QR..." : "Hiện QR"}</Button></div>
       </section>
 
       {qrError ? <p className="rounded-md border border-dt-red/40 bg-dt-red/10 px-3 py-2 text-[12px] text-red-200">{qrError}</p> : null}

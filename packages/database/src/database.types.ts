@@ -301,6 +301,69 @@ export type Database = {
           },
         ]
       }
+      guest_orders: {
+        Row: {
+          order_id: string
+          sender_email: string
+          sender_phone: string
+          verified_auth_user_id: string
+          created_at: string
+        }
+        Insert: {
+          order_id: string
+          sender_email: string
+          sender_phone: string
+          verified_auth_user_id: string
+          created_at?: string
+        }
+        Update: {
+          order_id?: string
+          sender_email?: string
+          sender_phone?: string
+          verified_auth_user_id?: string
+          created_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "guest_orders_order_id_fkey"
+          columns: ["order_id"]
+          isOneToOne: true
+          referencedRelation: "orders"
+          referencedColumns: ["id"]
+        }]
+      }
+      order_feedback_recipients: {
+        Row: { order_id: string; recipient_email: string; created_at: string }
+        Insert: { order_id: string; recipient_email: string; created_at?: string }
+        Update: { order_id?: string; recipient_email?: string; created_at?: string }
+        Relationships: [{
+          foreignKeyName: "order_feedback_recipients_order_id_fkey"
+          columns: ["order_id"]
+          isOneToOne: true
+          referencedRelation: "orders"
+          referencedColumns: ["id"]
+        }]
+      }
+      order_feedback: {
+        Row: {
+          id: string; order_id: string; kind: string; rating: number | null
+          message: string; verified_auth_user_id: string; created_at: string
+        }
+        Insert: {
+          id?: string; order_id: string; kind: string; rating?: number | null
+          message: string; verified_auth_user_id: string; created_at?: string
+        }
+        Update: {
+          id?: string; order_id?: string; kind?: string; rating?: number | null
+          message?: string; verified_auth_user_id?: string; created_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "order_feedback_order_id_fkey"
+          columns: ["order_id"]
+          isOneToOne: false
+          referencedRelation: "orders"
+          referencedColumns: ["id"]
+        }]
+      }
       contacts: {
         Row: {
           created_at: string
@@ -1262,7 +1325,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_guest_order: {
+        Args: { p_payload: Json }
+        Returns: { order_id: string; tracking_code: string; actor_id: string }[]
+      }
+      take_public_tracking_slot: {
+        Args: { p_client_key: string; p_limit: number; p_window_seconds: number }
+        Returns: boolean
+      }
     }
     Enums: {
       cod_transaction_status: "pending" | "collected" | "reconciled"

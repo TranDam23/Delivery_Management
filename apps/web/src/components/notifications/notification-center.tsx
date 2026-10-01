@@ -26,6 +26,9 @@ interface NoticePage {
 }
 
 function destination(role: RoleCode, notice: Notice): string | null {
+  if (notice.title === "Người nhận phản ánh đơn hàng" && notice.order_id && (role === "DISPATCHER" || role === "ADMIN")) {
+    return `/dashboard/${role === "ADMIN" ? "admin" : "dispatcher"}/complaints/${notice.order_id}`;
+  }
   if (role === "CUSTOMER" && notice.order_id) return `/orders/${notice.order_id}`;
   if (role === "DELIVERY_STAFF") return "/dashboard/delivery/routes";
   if (role === "WAREHOUSE_STAFF") return "/dashboard/warehouse/operations";
