@@ -11,6 +11,7 @@ import { Card, CardLabel } from "@/components/ui/card";
 import { TextField } from "@/components/ui/field";
 import { apiFetch } from "@/lib/api-client";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
+import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 
 interface ContactSummary {
   id: string;
@@ -78,7 +79,7 @@ export function AddressListPage({ contactId }: { contactId: string }): React.JSX
   );
 }
 
-interface AddressFormState {
+interface AddressFormState extends AddressMapValue {
   recipient_name: string;
   phone: string;
   address_line: string;
@@ -88,7 +89,8 @@ interface AddressFormState {
   is_default: boolean;
 }
 
-const INITIAL_ADDRESS: AddressFormState = { recipient_name: "", phone: "", address_line: "", ward: "", district: "", province: "", is_default: false };
+const INITIAL_ADDRESS: AddressFormState = { recipient_name: "", phone: "", address_line: "", ward: "", district: "", province: "", latitude: null, longitude: null, place_id: null, formatted_address: null, location_source: null, is_default: false };
+const EMPTY_ADDRESS_PIN: AddressMapValue = { latitude: null, longitude: null, place_id: null, formatted_address: null, location_source: null };
 
 export function AddressFormPage({ contactId, addressId }: { contactId: string; addressId?: string }): React.JSX.Element {
   const router = useRouter();
@@ -110,7 +112,7 @@ export function AddressFormPage({ contactId, addressId }: { contactId: string; a
         if (addressId && !address) {
           setError("Không tìm thấy địa chỉ cần sửa.");
         } else if (address) {
-          setForm({ recipient_name: address.recipient_name, phone: address.phone, address_line: address.address_line, ward: address.ward ?? "", district: address.district ?? "", province: address.province ?? "", is_default: address.id === result.contact.default_address_id });
+          setForm({ recipient_name: address.recipient_name, phone: address.phone, address_line: address.address_line, ward: address.ward ?? "", district: address.district ?? "", province: address.province ?? "", latitude: address.latitude, longitude: address.longitude, place_id: address.place_id, formatted_address: address.formatted_address, location_source: address.location_source, is_default: address.id === result.contact.default_address_id });
         } else {
           setForm((current) => ({ ...current, recipient_name: current.recipient_name || result.contact.name, phone: current.phone || result.contact.phone, is_default: result.items.length === 0 }));
         }
@@ -124,8 +126,12 @@ export function AddressFormPage({ contactId, addressId }: { contactId: string; a
     return () => { mounted = false; };
   }, [addressId, contactId]);
 
-  function update(field: keyof AddressFormState, value: string | boolean): void {
-    setForm((current) => ({ ...current, [field]: value }));
+  function update(field: keyof AddressFormState, value: string | number | boolean | null): void {
+    setForm((current) => {
+      const addressTextChanged = ["address_line", "ward", "district", "province"].includes(field)
+        && current[field] !== value;
+      return { ...current, [field]: value, ...(addressTextChanged ? EMPTY_ADDRESS_PIN : {}) };
+    });
     setError(null);
   }
 
@@ -158,7 +164,7 @@ export function AddressFormPage({ contactId, addressId }: { contactId: string; a
   return (
     <>
       <PageHeader heading={editing ? "Sửa địa chỉ" : "Thêm địa chỉ"} subtitle={`${editing ? "Cập nhật" : "Địa chỉ mới"} cho ${contactName}`} action={<Link href={`/contacts/${contactId}/addresses`} className={buttonClassName("secondary")}><ArrowLeft size={14} /> Quay lại</Link>} />
-      <form onSubmit={handleSubmit} className="max-w-[900px]"><Card className="gap-4"><CardLabel>Thông tin địa chỉ</CardLabel><div className="grid gap-4 md:grid-cols-2"><TextField label="Tên người nhận" required value={form.recipient_name} onChange={(event) => update("recipient_name", event.target.value)} /><TextField label="Số điện thoại" required inputMode="tel" value={form.phone} onChange={(event) => update("phone", event.target.value)} /></div><TextField label="Địa chỉ cụ thể" required placeholder="Số nhà, tên đường" value={form.address_line} onChange={(event) => update("address_line", event.target.value)} /><AddressLocationFields value={{ province: form.province, district: form.district, ward: form.ward }} onChange={(location) => { setForm((current) => ({ ...current, ...location })); setError(null); }} /><label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-dt-muted"><input type="checkbox" checked={form.is_default} onChange={(event) => update("is_default", event.target.checked)} className="h-3.5 w-3.5 accent-[var(--dt-yellow)]" /> Đặt làm địa chỉ mặc định</label>{editing && form.is_default ? <p className="text-[11px] text-dt-muted">Liên hệ luôn cần một địa chỉ mặc định; hệ thống sẽ giữ địa chỉ này nếu bạn không chọn địa chỉ khác.</p> : null}{error ? <p role="alert" className="rounded-md border border-dt-red/40 bg-dt-red/10 px-3 py-2 text-[12px] text-red-200">{error}</p> : null}<div className="flex gap-2 pt-2"><Link href={`/contacts/${contactId}/addresses`} className={buttonClassName("secondary")}>Hủy</Link><Button type="submit" disabled={submitting}>{submitting ? "Đang lưu..." : editing ? "Lưu thay đổi" : "Lưu địa chỉ"}</Button></div></Card></form>
+      <form onSubmit={handleSubmit} className="max-w-[900px]"><Card className="gap-4"><CardLabel>Thông tin địa chỉ</CardLabel><div className="grid gap-4 md:grid-cols-2"><TextField label="Tên người nhận" required value={form.recipient_name} onChange={(event) => update("recipient_name", event.target.value)} /><TextField label="Số điện thoại" required inputMode="tel" value={form.phone} onChange={(event) => update("phone", event.target.value)} /></div><TextField label="Địa chỉ cụ thể" required placeholder="Số nhà, tên đường" value={form.address_line} onChange={(event) => update("address_line", event.target.value)} /><AddressLocationFields value={{ province: form.province, district: form.district, ward: form.ward }} onChange={(location) => { setForm((current) => { const addressTextChanged = current.province !== location.province || current.district !== location.district || current.ward !== location.ward; return { ...current, ...location, ...(addressTextChanged ? EMPTY_ADDRESS_PIN : {}) }; }); setError(null); }} /><AddressMapPicker value={form} onChange={(location) => { setForm((current) => ({ ...current, ...location })); setError(null); }} /><label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-dt-muted"><input type="checkbox" checked={form.is_default} onChange={(event) => update("is_default", event.target.checked)} className="h-3.5 w-3.5 accent-[var(--dt-yellow)]" /> Đặt làm địa chỉ mặc định</label>{editing && form.is_default ? <p className="text-[11px] text-dt-muted">Liên hệ luôn cần một địa chỉ mặc định; hệ thống sẽ giữ địa chỉ này nếu bạn không chọn địa chỉ khác.</p> : null}{error ? <p role="alert" className="rounded-md border border-dt-red/40 bg-dt-red/10 px-3 py-2 text-[12px] text-red-200">{error}</p> : null}<div className="flex gap-2 pt-2"><Link href={`/contacts/${contactId}/addresses`} className={buttonClassName("secondary")}>Hủy</Link><Button type="submit" disabled={submitting}>{submitting ? "Đang lưu..." : editing ? "Lưu thay đổi" : "Lưu địa chỉ"}</Button></div></Card></form>
     </>
   );
 }
