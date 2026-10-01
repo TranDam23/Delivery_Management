@@ -20,17 +20,14 @@ import { SelectField, TextField } from "@/components/ui/field";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
+import { GoodsFields } from "@/components/orders/goods-fields";
 import { apiFetch } from "@/lib/api-client";
+import { goodsPayload, validateGoods, type GoodsInput } from "@/lib/goods";
 
-interface FormState {
+interface FormState extends GoodsInput {
   senderId: string;
   receiverId: string;
   serviceType: string;
-  itemName: string;
-  itemType: string;
-  quantity: string;
-  weight: string;
-  declaredValue: string;
   codAmount: string;
   note: string;
 }
@@ -75,6 +72,9 @@ const INITIAL_FORM: FormState = {
   itemType: "",
   quantity: "1",
   weight: "",
+  length: "",
+  width: "",
+  height: "",
   declaredValue: "",
   codAmount: "0",
   note: "",
@@ -304,7 +304,7 @@ export function NewOrderPage(): React.JSX.Element {
   const receiverContacts = useMemo(() => contacts.filter((contact) => canBeReceiver(contact.type)), [contacts]);
   const selectedSender = contacts.find((contact) => contact.id === form.senderId);
   const selectedReceiver = contacts.find((contact) => contact.id === form.receiverId);
-  const weight = numericValue(form.weight);
+  const weight = numericValue(form.weight) * numericValue(form.quantity);
   const baseFee = form.serviceType === "express" ? 50000 : form.serviceType === "same_day" ? 70000 : 30000;
   const estimatedFee = baseFee + Math.max(0, weight - 1) * 5000;
 
@@ -317,9 +317,7 @@ export function NewOrderPage(): React.JSX.Element {
     event.preventDefault();
     setFormError(null);
 
-    const quantity = numericValue(form.quantity);
     const codAmount = numericValue(form.codAmount);
-    const declaredValue = numericValue(form.declaredValue);
 
     if (senderSource === "addressBook" && !selectedSender) {
       setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
@@ -347,16 +345,13 @@ export function NewOrderPage(): React.JSX.Element {
       setFormError("Vui lòng chọn một địa chỉ giao hàng trong sổ địa chỉ.");
       return;
     }
-    if (!form.itemName.trim()) {
-      setFormError("Vui lòng nhập tên hàng hóa.");
+    const goodsError = validateGoods(form);
+    if (goodsError) {
+      setFormError(goodsError);
       return;
     }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      setFormError("Số lượng phải là số nguyên lớn hơn 0.");
-      return;
-    }
-    if (weight < 0 || codAmount < 0 || declaredValue < 0) {
-      setFormError("Khối lượng, giá trị khai báo và COD không được âm.");
+    if (!Number.isFinite(codAmount) || codAmount < 0) {
+      setFormError("COD không được âm.");
       return;
     }
 
@@ -402,13 +397,7 @@ export function NewOrderPage(): React.JSX.Element {
           cod_amount: codAmount,
           total_fee: estimatedFee,
           note: form.note.trim() || undefined,
-          items: [{
-            item_name: form.itemName.trim(),
-            item_type: form.itemType.trim() || undefined,
-            quantity,
-            weight: form.weight.trim() ? weight : undefined,
-            declared_value: form.declaredValue.trim() ? declaredValue : undefined,
-          }],
+          items: [goodsPayload(form)],
         }),
       });
       router.push(`/orders/${created.id}`);
@@ -559,26 +548,7 @@ export function NewOrderPage(): React.JSX.Element {
             <p className="text-[11px] text-dt-muted">Đơn hàng sẽ dùng đúng địa chỉ lấy và giao bạn đã chọn; việc chọn địa chỉ khác không làm thay đổi địa chỉ mặc định trong sổ.</p>
           </Card>
 
-          <Card>
-            <CardLabel>Hàng hóa</CardLabel>
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
-              <TextField label="Tên hàng hóa" required value={form.itemName} placeholder="Ví dụ: Hồ sơ hợp đồng" onChange={(event) => update("itemName", event.target.value)} />
-              <TextField label="Loại hàng" value={form.itemType} placeholder="Hồ sơ, quần áo..." onChange={(event) => update("itemType", event.target.value)} />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <TextField label="Số lượng" type="number" min="1" step="1" required value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
-              <TextField label="Khối lượng (kg)" type="number" min="0" step="0.01" value={form.weight} placeholder="Không bắt buộc" onChange={(event) => update("weight", event.target.value)} />
-              <TextField label="Giá trị khai báo" type="number" min="0" step="1000" value={form.declaredValue} placeholder="Không bắt buộc" onChange={(event) => update("declaredValue", event.target.value)} />
-            </div>
-          </Card>
-
-          <Card>
-            <CardLabel>Ghi chú</CardLabel>
-            <label className="flex flex-col gap-[6px]">
-              <span className="text-[11px] font-medium text-dt-muted">Lưu ý cho đơn hàng</span>
-              <textarea value={form.note} onChange={(event) => update("note", event.target.value)} placeholder="Ví dụ: Gọi trước khi giao..." rows={4} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
-            </label>
-          </Card>
+          <GoodsFields value={form} note={form.note} onChange={update} onNoteChange={(value) => update("note", value)} />
         </div>
 
         <div className="space-y-4">

@@ -33,19 +33,24 @@ const createOrderSchema = z.object({
   service_type: z.string().default("standard"),
   cod_amount: z.number().nonnegative().default(0),
   total_fee: z.number().nonnegative().default(0),
-  note: z.string().optional(),
+  note: z.string().trim().max(1000).optional(),
   items: z
     .array(
       z.object({
-        item_name: z.string().min(1),
-        item_type: z.string().optional(),
+        item_name: z.string().trim().min(1).max(200),
+        item_type: z.string().trim().max(100).optional(),
         quantity: z.number().int().positive().default(1),
-        weight: z.number().optional(),
-        length: z.number().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
-        declared_value: z.number().optional(),
-        note: z.string().optional(),
+        weight: z.number().finite().positive().optional(),
+        length: z.number().finite().positive().optional(),
+        width: z.number().finite().positive().optional(),
+        height: z.number().finite().positive().optional(),
+        declared_value: z.number().finite().nonnegative().optional(),
+        note: z.string().trim().max(1000).optional(),
+      }).superRefine((item, context) => {
+        const dimensions = [item.length, item.width, item.height];
+        if (dimensions.some((value) => value !== undefined) && dimensions.some((value) => value === undefined)) {
+          context.addIssue({ code: z.ZodIssueCode.custom, path: ["length"], message: "Cần nhập đủ dài, rộng và cao" });
+        }
       }),
     )
     .min(1),
