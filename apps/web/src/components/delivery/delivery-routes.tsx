@@ -185,6 +185,22 @@ export function DeliveryRoutesPage(): React.JSX.Element {
     }
   }
 
+  async function confirmFeeCollected(leg: AssignedLeg, orderId: string, amount: number): Promise<void> {
+    if (!window.confirm(`Xác nhận đã thu đủ ${formatVnd(amount)} phí vận chuyển bằng tiền mặt? Khoản này phải nộp về bưu cục cùng COD.`)) return;
+    setBusyId(leg.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/shipping-payment`, { method: "POST", body: JSON.stringify({ action: "confirm" }) });
+      setNotice("Đã ghi nhận thu phí vận chuyển. Nhớ nộp tiền về bưu cục.");
+      await loadLegs();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không xác nhận được khoản thu phí");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function confirmSheet(): Promise<void> {
     if (!sheet) return;
     const { kind, leg } = sheet;
@@ -294,6 +310,9 @@ export function DeliveryRoutesPage(): React.JSX.Element {
           {!leg.is_return && order?.shipping_payment_method === "cash" && order.shipping_payment_status !== "paid"
             && ((leg.leg_type === ShipmentLegType.PICKUP && order.shipping_fee_payer === "sender") || (leg.leg_type === ShipmentLegType.LAST_MILE && order.shipping_fee_payer === "receiver"))
             ? <p className="mt-2 text-[12px] text-dt-muted">Phí vận chuyển riêng ({order.shipping_fee_payer === "sender" ? "người gửi" : "người nhận"} trả): {formatVnd(Number(order.total_fee))} · chưa xác nhận thu</p> : null}
+          {!leg.is_return && order?.shipping_payment_method === "cash" && order.shipping_payment_status !== "paid" && (leg.status === ShipmentLegStatusCode.IN_PROGRESS || leg.status === ShipmentLegStatusCode.ASSIGNED)
+            && ((leg.leg_type === ShipmentLegType.PICKUP && order.shipping_fee_payer === "sender") || (leg.leg_type === ShipmentLegType.LAST_MILE && order.shipping_fee_payer === "receiver"))
+            ? <button type="button" disabled={busyId === leg.id} onClick={() => void confirmFeeCollected(leg, order.id, Number(order.total_fee))} className="mt-2 rounded-md border border-dt-yellow px-3 py-2 text-[12px] text-dt-yellow disabled:opacity-50">Xác nhận đã thu phí {formatVnd(Number(order.total_fee))}</button> : null}
 
           {inTodo || expanded ? (
             <div className="mt-3 grid grid-cols-2 gap-2">

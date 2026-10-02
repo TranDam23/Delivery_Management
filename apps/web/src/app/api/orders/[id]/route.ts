@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   if (!order) return fail("Order not found", 404);
 
   const { data: codTransaction, error: codError } = Number(order.cod_amount) > 0
-    ? await supabase.from("cod_transactions").select("status, amount, collected_at, reconciled_at")
+    ? await supabase.from("cod_transactions").select("status, amount, collected_at, reconciled_at, remitted_at, handed_over_at")
       .eq("order_id", id).maybeSingle()
     : { data: null, error: null };
   if (codError) return fail(codError.message, 500);
