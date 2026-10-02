@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { OrderStatusCode, PackageCondition, RoleCode, ShipmentLegStatusCode, ShipmentLegType, VIETNAM_PROVINCES, WarehouseEventType, WarehouseLevelCode, WarehouseStatusCode, type AuthenticatedUser, type ShipmentLegStatusCode as ShipmentLegStatus, type ShipmentLegType as ShipmentType, type Warehouse } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -209,7 +210,10 @@ function RouteDetailsModal({ routeItem, staff, currentUser, saving, onClose, onA
             <p className="text-[10px] font-semibold uppercase tracking-wider text-dt-yellow">Chi tiết tuyến đơn hàng</p>
             <h2 id="route-details-title" className="mt-1 truncate text-lg font-semibold">{order.tracking_code}</h2>
           </div>
-          <Button type="button" variant="secondary" className="h-9 w-9 shrink-0 px-0" aria-label="Đóng chi tiết đơn hàng" onClick={onClose}><X size={16} /></Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link href={`/tra-cuu/${encodeURIComponent(order.tracking_code)}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-2 rounded-md border border-dt-border px-3 text-[11px] hover:border-dt-yellow/50"><Truck size={14} /> Xem hành trình</Link>
+            <Button type="button" variant="secondary" className="h-9 w-9 shrink-0 px-0" aria-label="Đóng chi tiết đơn hàng" onClick={onClose}><X size={16} /></Button>
+          </div>
         </header>
         <div className="overflow-y-auto p-4 sm:p-6">
           <div className="grid gap-3 sm:grid-cols-2">

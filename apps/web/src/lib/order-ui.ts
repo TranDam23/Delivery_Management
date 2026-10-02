@@ -83,19 +83,22 @@ export interface TrackingOrder {
   tracking_code: string;
   service_type: string;
   created_at: string;
+  expected_delivery_date: string | null;
+  estimate_source: "scheduled" | "service";
   order_statuses: OrderStatusSummary | OrderStatusSummary[] | null;
+}
+
+export interface TrackingTimelineEntry {
+  kind: "created" | "status" | "warehouse";
+  time: string;
+  label: string;
+  location: string | null;
+  actor: string;
 }
 
 export interface TrackingResult {
   order: TrackingOrder;
-  events: OrderEvent[];
-  warehouseEvents: Array<{
-    event_time: string;
-    event_type: string;
-    note?: string | null;
-    warehouse: { code: string; name: string; province: string } | null;
-    leg: { sequence_no: number; leg_type: string } | null;
-  }>;
+  timeline: TrackingTimelineEntry[];
   blockchainEvents: Array<{
     event_type: string;
     transaction_hash: string | null;
