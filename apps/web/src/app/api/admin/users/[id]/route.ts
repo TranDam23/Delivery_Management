@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RoleCode, UserStatus } from "@delivery/shared";
 import { OPERATIONAL_ROLE_CODES, resolveWarehouseAssignment } from "@/lib/admin-user-rules";
 import { writeAuditLog } from "@/lib/audit";
+import { adminUserDetailController } from "@/controllers/admin-user-detail.controller";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -25,6 +26,15 @@ const SELECT = "id, full_name, email, phone, province, warehouse_id, status, rol
  * PATCH /api/admin/users/:id — Admin cập nhật tài khoản: gán kho, khóa/mở khóa,
  * đổi vai trò (phân quyền), đổi họ tên/số điện thoại. Mọi thay đổi được ghi audit log.
  */
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  return adminUserDetailController(request, id);
+}
+
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);

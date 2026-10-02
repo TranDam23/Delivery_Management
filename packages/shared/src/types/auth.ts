@@ -11,6 +11,7 @@ import { LegacyRoleCode, RoleCode } from "../enums";
 export interface AuthTokenPayload {
   userId: string;
   roleCode: RoleCode;
+  tokenType: "access" | "refresh";
 }
 
 /** Thong tin tai khoan an toan de gui ve client sau khi dang nhap. */
