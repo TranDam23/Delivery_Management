@@ -33,6 +33,7 @@ import {
 } from "./delivery-legs";
 import { DeliveryMobileShell } from "./mobile-shell";
 import { ProofPhotoInput } from "./proof-photo-input";
+import { QrCameraScanner } from "./qr-camera-scanner";
 
 type DriverEventCode =
   | typeof BlockchainEventType.PICKED_UP
@@ -90,6 +91,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
   const [tab, setTab] = useState<LegBucket>("todo");
   const [search, setSearch] = useState("");
   const [scanMode, setScanMode] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -434,7 +436,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
       )}
     >
       <label className="flex min-h-12 items-center gap-2 rounded-dt border border-dt-border bg-dt-panel px-3 focus-within:border-dt-yellow">
-        <ScanLine size={18} className="shrink-0 text-dt-yellow" />
+        <button type="button" onClick={() => setCameraOpen(true)} aria-label="Mở camera quét QR" className="shrink-0 rounded-md p-1 text-dt-yellow hover:bg-dt-panel2"><ScanLine size={20} /></button>
         <input
           ref={searchRef}
           value={search}
@@ -482,6 +484,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
       </div>
 
       {renderSheet()}
+      {cameraOpen ? <QrCameraScanner onClose={() => setCameraOpen(false)} onResult={(code) => { setCameraOpen(false); setSearch(code.toUpperCase()); setScanMode(true); }} /> : null}
     </DeliveryMobileShell>
   );
 }
