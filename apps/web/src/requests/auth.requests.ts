@@ -3,7 +3,12 @@ export interface RegisterReqBody {
   email: string;
   password: string;
   confirm_password: string;
+  otp: string;
   phone?: string | null;
+}
+
+export interface RegisterOtpReqBody {
+  email: string;
 }
 
 export interface LoginReqBody {

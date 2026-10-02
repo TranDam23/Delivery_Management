@@ -4,6 +4,8 @@ Luồng: khách nhập thông tin gửi/nhận và hàng hóa → yêu cầu OTP
 
 Kết quả tra cứu hiển thị 20 đơn mỗi trang. Sau lần xác thực OTP đầu, trình duyệt giữ một vé tra cứu ngắn hạn trong bộ nhớ để chuyển trang mà không phải nhập lại OTP; vé hết hạn sau 10 phút và không được lưu vào localStorage.
 
+Trang `/register` cũng dùng cùng Supabase Auth email OTP: yêu cầu mã tại `/api/auth/register/otp`, sau đó gửi OTP cùng thông tin đăng ký tới `/api/auth/register`. Server chỉ tạo user `CUSTOMER` trong bảng `users` sau khi OTP của đúng email được xác minh và xác nhận. Endpoint đăng ký không chấp nhận cờ xác minh từ client. Đăng nhập DeliverTrust vẫn dùng bảng `users`, bcrypt và JWT hiện có; xác minh OTP không tự tạo tài khoản ứng dụng. Do helper OTP hiện đặt `shouldCreateUser: true`, Supabase Auth có thể đồng thời tạo identity Auth riêng cho email chưa có trong Auth. Nếu tạo bản ghi ứng dụng lỗi sau khi OTP đã được dùng, người dùng cần yêu cầu mã mới rồi thử lại; thông tin mật khẩu không được lưu tạm.
+
 ## Cấu hình trước khi thử thực tế
 
 1. Ba migration `20261001090000_public_tracking_rate_limit.sql`, `20261001100000_guest_email_orders.sql` và `20261001110000_delivery_feedback_and_notification_privacy.sql` đã được áp dụng lên Supabase ngày 01/10/2026 sau khi người dùng xác nhận hai người phụ trách đã duyệt. Với môi trường khác, áp dụng đủ ba migration theo thứ tự; không sửa migration đã chạy.

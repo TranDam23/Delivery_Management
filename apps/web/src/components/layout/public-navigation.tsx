@@ -17,7 +17,8 @@ const navigation = [
 
 function isPublicPath(pathname: string): boolean {
   return pathname === "/" || pathname === "/login" || pathname === "/gui-hang"
-    || pathname === "/tra-lai-ma" || pathname === "/tra-cuu" || pathname.startsWith("/tra-cuu/");
+    || pathname === "/tra-lai-ma" || pathname === "/tra-cuu" || pathname.startsWith("/tra-cuu/")
+    || pathname === "/terms" || pathname === "/privacy";
 }
 
 export function PublicNavigation(): React.JSX.Element | null {

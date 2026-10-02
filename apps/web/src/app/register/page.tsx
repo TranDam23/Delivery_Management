@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 interface FormValues {
@@ -27,14 +27,15 @@ interface FormValues {
   phone: string;
   password: string;
   confirmPassword: string;
+  otp: string;
   terms: boolean;
 }
 
 type FormErrors = Partial<Record<keyof FormValues, string>>;
 
 type RegisterResponse =
-  | { success: true; data: { message: string }; error?: never }
-  | { success: false; error?: string; data?: never };
+  | { success: true; message: string }
+  | { success: false; error: string };
 
 const INITIAL_VALUES: FormValues = {
   fullName: "",
@@ -42,6 +43,7 @@ const INITIAL_VALUES: FormValues = {
   phone: "",
   password: "",
   confirmPassword: "",
+  otp: "",
   terms: false,
 };
 
@@ -69,11 +71,19 @@ const FEATURES = [
   },
 ] as const;
 
-function validate(values: FormValues): FormErrors {
+function validate(values: FormValues, requireOtp: boolean): FormErrors {
   const errors: FormErrors = {};
-  if (!values.fullName.trim()) errors.fullName = "Vui lòng nhập họ và tên.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
+  if (!values.fullName.trim() || values.fullName.trim().length > 120) {
+    errors.fullName = "Họ tên phải có từ 1 đến 120 ký tự.";
+  }
+  if (
+    values.email.trim().length > 254
+    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())
+  ) {
     errors.email = "Email không hợp lệ.";
+  }
+  if (values.phone.trim() && !/^\+?[0-9\s().-]{9,20}$/.test(values.phone.trim())) {
+    errors.phone = "Số điện thoại không hợp lệ.";
   }
   if (values.password.length < 8) {
     errors.password = "Mật khẩu cần tối thiểu 8 ký tự.";
@@ -83,8 +93,31 @@ function validate(values: FormValues): FormErrors {
   if (values.confirmPassword !== values.password) {
     errors.confirmPassword = "Mật khẩu xác nhận không khớp.";
   }
+  if (requireOtp && !/^\d{6,8}$/.test(values.otp.trim())) {
+    errors.otp = "Mã OTP phải gồm từ 6 đến 8 chữ số.";
+  }
   if (!values.terms) errors.terms = "Bạn cần đồng ý với điều khoản sử dụng.";
   return errors;
+}
+
+async function readApiResponse(response: Response): Promise<RegisterResponse | null> {
+  const value: unknown = await response.json().catch(() => null);
+  if (!value || typeof value !== "object") return null;
+
+  const payload = value as { success?: unknown; data?: unknown; error?: unknown };
+  if (
+    payload.success === true
+    && payload.data
+    && typeof payload.data === "object"
+    && "message" in payload.data
+    && typeof payload.data.message === "string"
+  ) {
+    return { success: true, message: payload.data.message };
+  }
+  if (payload.success === false && typeof payload.error === "string") {
+    return { success: false, error: payload.error };
+  }
+  return null;
 }
 
 function fieldClass(error?: string): string {
@@ -100,22 +133,78 @@ export default function RegisterPage(): React.JSX.Element {
   const [values, setValues] = useState(INITIAL_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [apiError, setApiError] = useState<string | null>(null);
+  const [apiMessage, setApiMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(
+      () => setResendCooldown((current) => Math.max(0, current - 1)),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   function updateValue<K extends keyof FormValues>(key: K, value: FormValues[K]): void {
     setValues((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
     setApiError(null);
+    setApiMessage(null);
+    if (key === "email") {
+      setOtpSent(false);
+      setResendCooldown(0);
+      setValues((current) => ({ ...current, otp: "" }));
+    }
+  }
+
+  async function sendOtp(): Promise<void> {
+    const validationErrors = validate(values, false);
+    setErrors(validationErrors);
+    setApiError(null);
+    setApiMessage(null);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/register/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: values.email.trim().toLowerCase() }),
+      });
+      const payload = await readApiResponse(response);
+
+      if (!response.ok || !payload || !payload.success) {
+        setApiError(payload?.success === false ? payload.error : "Không gửi được mã OTP. Vui lòng thử lại.");
+        return;
+      }
+
+      setOtpSent(true);
+      setValues((current) => ({ ...current, otp: "" }));
+      setResendCooldown(60);
+      setApiMessage(payload.message);
+    } catch {
+      setApiError("Không thể kết nối đến máy chủ. Vui lòng thử lại.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const validationErrors = validate(values);
+    if (!otpSent) {
+      await sendOtp();
+      return;
+    }
+
+    const validationErrors = validate(values, true);
     setErrors(validationErrors);
     setApiError(null);
+    setApiMessage(null);
     if (Object.keys(validationErrors).length > 0) return;
 
     setSubmitting(true);
@@ -129,12 +218,13 @@ export default function RegisterPage(): React.JSX.Element {
           phone: values.phone.trim() || null,
           password: values.password,
           confirm_password: values.confirmPassword,
+          otp: values.otp.trim(),
         }),
       });
-      const payload = (await response.json().catch(() => null)) as RegisterResponse | null;
+      const payload = await readApiResponse(response);
 
       if (!response.ok || !payload || !payload.success) {
-        setApiError(payload?.error ?? "Không thể tạo tài khoản. Vui lòng thử lại.");
+        setApiError(payload?.success === false ? payload.error : "Không thể tạo tài khoản. Vui lòng thử lại.");
         return;
       }
 
@@ -261,8 +351,9 @@ export default function RegisterPage(): React.JSX.Element {
                   <span className="mb-1.5 block text-[10px] font-medium text-[#b7c1d3]">Số điện thoại</span>
                   <span className="relative block">
                     <Phone size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#74829a]" />
-                    <input type="tel" value={values.phone} onChange={(event) => updateValue("phone", event.target.value)} placeholder="0912 345 678" className={`${fieldClass()} pl-9`} autoComplete="tel" />
+                    <input type="tel" value={values.phone} onChange={(event) => updateValue("phone", event.target.value)} placeholder="0912 345 678" className={`${fieldClass(errors.phone)} pl-9`} autoComplete="tel" />
                   </span>
+                  {errors.phone ? <span className="mt-1 block text-[10px] text-[#ff8e91]">{errors.phone}</span> : null}
                 </label>
                 <label>
                   <span className="mb-1.5 block text-[10px] font-medium text-[#b7c1d3]">Mật khẩu tài khoản <span className="text-dt-yellow">*</span></span>
@@ -282,6 +373,34 @@ export default function RegisterPage(): React.JSX.Element {
                   </span>
                   {errors.confirmPassword ? <span className="mt-1 block text-[10px] text-[#ff8e91]">{errors.confirmPassword}</span> : null}
                 </label>
+                {otpSent ? (
+                  <label className="sm:col-span-2">
+                    <span className="mb-1.5 block text-[10px] font-medium text-[#b7c1d3]">Mã OTP gửi đến email</span>
+                    <input
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={8}
+                      value={values.otp}
+                      onChange={(event) => updateValue("otp", event.target.value.replace(/\D/g, "").slice(0, 8))}
+                      placeholder="Nhập mã xác thực"
+                      className={fieldClass(errors.otp)}
+                      aria-invalid={Boolean(errors.otp)}
+                    />
+                    {errors.otp ? <span className="mt-1 block text-[10px] text-[#ff8e91]">{errors.otp}</span> : null}
+                    <button
+                      type="button"
+                      disabled={submitting || resendCooldown > 0}
+                      onClick={() => void sendOtp()}
+                      className="mt-2 text-[10px] font-semibold text-dt-yellow hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitting
+                        ? "Đang gửi mã..."
+                        : resendCooldown > 0
+                          ? `Gửi lại mã sau ${resendCooldown} giây`
+                          : "Gửi lại mã OTP"}
+                    </button>
+                  </label>
+                ) : null}
               </div>
 
               <div className="mt-5 rounded-dt border border-dt-border bg-dt-panel2 p-3.5">
@@ -298,13 +417,18 @@ export default function RegisterPage(): React.JSX.Element {
 
               <label className="mt-4 flex items-start gap-2 text-[10px] leading-4 text-[#8492a9]">
                 <input type="checkbox" checked={values.terms} onChange={(event) => updateValue("terms", event.target.checked)} className="mt-0.5 accent-[var(--dt-yellow)]" />
-                <span>Tôi đã đọc và đồng ý với <a href="#terms" className="text-dt-yellow hover:underline">Điều khoản dịch vụ</a> và <a href="#privacy" className="text-dt-yellow hover:underline">Chính sách bảo mật</a> của DeliverTrust.</span>
+                <span>Tôi đã đọc và đồng ý với <Link href="/terms" className="text-dt-yellow hover:underline">Điều khoản dịch vụ</Link> và <Link href="/privacy" className="text-dt-yellow hover:underline">Chính sách bảo mật</Link> của DeliverTrust.</span>
               </label>
               {errors.terms ? <p className="mt-1 text-[10px] text-[#ff8e91]">{errors.terms}</p> : null}
+              {apiMessage ? <p role="status" className="mt-4 rounded-md border border-[#2b806b]/40 bg-[#12372f] px-3 py-2 text-[10px] text-[#8fcbb9]">{apiMessage}</p> : null}
               {apiError ? <p role="alert" className="mt-4 rounded-md border border-dt-red/40 bg-dt-red/10 px-3 py-2 text-[10px] text-[#ff9a9c]">{apiError}</p> : null}
 
               <Button type="submit" disabled={submitting} className="mt-5 h-11 w-full rounded-dt bg-dt-yellow text-[12px] font-semibold text-dt-bg hover:brightness-110">
-                {submitting ? "Đang tạo tài khoản..." : <>Đăng ký tài khoản <ArrowRight size={15} /></>}
+                {submitting
+                  ? (otpSent ? "Đang xác minh và tạo tài khoản..." : "Đang gửi mã OTP...")
+                  : otpSent
+                    ? <>Xác minh và hoàn tất đăng ký <ArrowRight size={15} /></>
+                    : <>Gửi mã OTP <ArrowRight size={15} /></>}
               </Button>
               <p className="mt-4 text-center text-[10px] text-[#8492a9]">Đã có tài khoản? <Link href="/login" className="font-semibold text-dt-yellow hover:underline">Đăng nhập ngay <ArrowRight className="inline" size={11} /></Link></p>
               <p className="mt-5 flex items-center justify-center gap-1.5 text-[9px] text-[#75839a]"><LockKeyhole size={11} className="text-[#63d2b3]" /> Dữ liệu được mã hóa và bảo vệ theo tiêu chuẩn nền tảng</p>

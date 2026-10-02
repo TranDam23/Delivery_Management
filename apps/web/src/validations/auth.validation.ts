@@ -1,12 +1,17 @@
 import { z } from "zod";
-import type { RegisterReqBody } from "@/requests/auth.requests";
+import type { RegisterOtpReqBody, RegisterReqBody } from "@/requests/auth.requests";
 
 const phonePattern = /^\+?[0-9\s().-]{9,20}$/;
 
 export const registerSchema = z
   .object({
     full_name: z.string().trim().min(1, "full_name is required").max(120),
-    email: z.string().trim().email("email must be a valid email address"),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("email must be a valid email address")
+      .max(254),
     password: z
       .string()
       .min(8, "password must be at least 8 characters")
@@ -14,6 +19,7 @@ export const registerSchema = z
       .regex(/[a-z]/, "password must contain a lowercase letter")
       .regex(/[0-9]/, "password must contain a number"),
     confirm_password: z.string().min(1, "confirm_password is required"),
+    otp: z.string().trim().regex(/^\d{6,8}$/, "otp must contain 6 to 8 digits"),
     phone: z
       .string()
       .trim()
@@ -34,6 +40,17 @@ export const registerSchema = z
       });
     }
   });
+
+export const registerOtpSchema = z
+  .object({
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("email must be a valid email address")
+      .max(254),
+  })
+  .strict();
 
 export const loginSchema = z
   .object({
@@ -95,6 +112,22 @@ export type RegisterValidationResult =
 
 export function validateRegisterInput(body: unknown): RegisterValidationResult {
   const result = registerSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type RegisterOtpValidationResult =
+  | { success: true; data: RegisterOtpReqBody }
+  | { success: false; error: string };
+
+export function validateRegisterOtpInput(
+  body: unknown,
+): RegisterOtpValidationResult {
+  const result = registerOtpSchema.safeParse(body);
   if (result.success) return { success: true, data: result.data };
 
   const message = result.error.issues

@@ -18,6 +18,7 @@ import { AuthRepository } from "@/repositories/auth.repository";
 import { RoleRepository } from "@/repositories/role.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { RefreshTokenRepository } from "@/repositories/refresh-token.repository";
+import { sendEmailOtp, verifyEmailOtp } from "@/lib/guest-email-otp";
 
 export class AuthService {
   constructor(
@@ -26,6 +27,21 @@ export class AuthService {
     private readonly authRepository?: AuthRepository,
     private readonly refreshTokenRepository?: RefreshTokenRepository,
   ) {}
+
+  async requestRegistrationOtp(emailInput: string): Promise<void> {
+    if (!this.users) {
+      throw new Error("Registration repositories are not configured");
+    }
+
+    const email = emailInput.trim().toLowerCase();
+    const existingUser = await this.users.findByEmail(email);
+    if (existingUser) {
+      throw new Error("An account with this email already exists");
+    }
+
+    const sendError = await sendEmailOtp(email);
+    if (sendError) throw new Error("Unable to send verification code");
+  }
 
   async register(input: RegisterReqBody): Promise<PublicUser> {
     if (!this.users || !this.roles) {
@@ -40,6 +56,16 @@ export class AuthService {
 
     const customerRole = await this.roles.findByCode(RoleCode.CUSTOMER);
     if (!customerRole) throw new Error("The customer role is not configured");
+
+    let verified: { userId: string; emailConfirmed: boolean } | null;
+    try {
+      verified = await verifyEmailOtp(email, input.otp);
+    } catch {
+      throw new Error("Email verification service unavailable");
+    }
+    if (!verified || !verified.emailConfirmed) {
+      throw new Error("Email verification failed");
+    }
 
     return this.users.createUser({
       role_id: customerRole.id,

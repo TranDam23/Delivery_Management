@@ -27,7 +27,36 @@ export async function registerController(input: RegisterReqBody) {
     if (message === "The customer role is not configured") {
       return fail(message, 500);
     }
+    if (message === "Email verification failed") {
+      return fail("Mã OTP không đúng hoặc đã hết hạn.", 401);
+    }
+    if (message === "Email verification service unavailable") {
+      return fail("Dịch vụ xác thực email tạm thời chưa sẵn sàng.", 503);
+    }
     return fail("Unable to register the account", 500);
+  }
+}
+
+export async function requestRegistrationOtpController(email: string) {
+  try {
+    const database = new DatabaseService();
+    await new AuthService(
+      new UserRepository(database),
+      new RoleRepository(database),
+    ).requestRegistrationOtp(email);
+
+    return ok({
+      message: "Mã xác thực đã được gửi nếu email đủ điều kiện đăng ký.",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message === "An account with this email already exists") {
+      return fail(message, 409);
+    }
+    if (message === "Unable to send verification code") {
+      return fail("Không gửi được mã xác thực. Vui lòng thử lại sau.", 503);
+    }
+    return fail("Không thể gửi mã xác thực lúc này.", 503);
   }
 }
 
