@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { data: order, error } = await supabase
     .from("orders")
     .select(
-      `id, tracking_code, qr_code, service_type, cod_amount, total_fee, shipping_fee_payer, shipping_payment_method, shipping_payment_status, note, cancel_reason,
+      `id, tracking_code, qr_code, service_type, cod_amount, total_fee, shipping_fee_payer, shipping_payment_method, shipping_payment_status, shipping_payee_kind, shipping_payee_bank_bin, shipping_payee_bank_name, shipping_payee_account_number, shipping_payee_account_name, shipping_payee_qr_url, shipping_transferred_at, shipping_paid_at, note, cancel_reason,
        created_at, updated_at,
        order_statuses(code, name, is_final),
        order_items(*),
@@ -75,5 +75,5 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     receiverConfirmation = { confirmedAt: delivery?.received_at ?? null };
   }
 
-  return ok({ order, events: events ?? [], receiverConfirmation, canConfirmReceipt, codTransaction });
+  return ok({ order, events: events ?? [], receiverConfirmation, canConfirmReceipt, codTransaction, viewerRole: auth.roleCode, isCustomerParticipant: access.isCustomerParticipant });
 }

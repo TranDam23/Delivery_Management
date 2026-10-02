@@ -6,7 +6,7 @@ import { AddressLocationFields } from "@/components/locations/address-location-f
 import { SelectField, TextField } from "@/components/ui/field";
 import { guestPost } from "./guest-api";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
-import { calculateShippingFee } from "@/lib/shipping-fee";
+import { useShippingQuote } from "@/lib/use-shipping-quote";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
 
 type Address = { name: string; phone: string; addressLine: string; province: string; district: string; ward: string; email?: string };
@@ -44,6 +44,12 @@ export function GuestOrderForm(): React.JSX.Element {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [trackingCode, setTrackingCode] = useState("");
+  const { quote } = useShippingQuote({
+    service: serviceType as "standard" | "express" | "same_day",
+    pickupProvince: sender.province,
+    deliveryProvince: receiver.province,
+    items: [{ weight: Number(weight) || undefined, quantity: Number(quantity) || 1 }],
+  });
 
   async function sendOtp() {
     setError(""); setMessage(""); setBusy(true);
@@ -96,9 +102,9 @@ export function GuestOrderForm(): React.JSX.Element {
         <TextField label="COD cần thu hộ (đ)" type="number" min="0" required value={codAmount} onChange={(event) => setCodAmount(event.target.value)} />
       </div>
       <SelectField label="Dịch vụ" required value={serviceType} onChange={(event) => setServiceType(event.target.value)}>
-        <option value="standard">Tiêu chuẩn — từ 30.000đ</option><option value="express">Hỏa tốc — từ 50.000đ</option><option value="same_day">Trong ngày — từ 70.000đ</option>
+        <option value="standard">Tiêu chuẩn</option><option value="express">Hỏa tốc</option><option value="same_day">Trong ngày (chỉ nội tỉnh)</option>
       </SelectField>
-      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={calculateShippingFee(serviceType as "standard" | "express" | "same_day", [{ weight: Number(weight) || undefined, quantity: Number(quantity) || 1 }])} />
+      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={quote?.fee ?? null} feeNote={quote && !quote.available ? quote.message : null} />
       <TextField label="Ghi chú giao hàng" value={note} onChange={(event) => setNote(event.target.value)} />
     </section>
     <section className="space-y-4 rounded-dt border border-dt-border bg-dt-panel p-5">

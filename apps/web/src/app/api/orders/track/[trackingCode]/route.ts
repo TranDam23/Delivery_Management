@@ -5,7 +5,7 @@ import { checkOrderViewAccess } from "@/lib/order-access";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ok, fail } from "@/lib/api-response";
 import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
-import { estimateDeliveryDate } from "@/lib/tracking-estimate";
+import { estimateDeliveryDate, routeZone } from "@/lib/tracking-estimate";
 import { relationValue, statusLabel, type TrackingTimelineEntry } from "@/lib/order-ui";
 
 interface RouteParams {
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const supabase = getSupabaseServiceClient();
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, tracking_code, service_type, created_at, created_by, expected_delivery_date, order_statuses(code, name, is_final)")
+    .select("id, tracking_code, service_type, created_at, created_by, expected_delivery_date, order_statuses(code, name, is_final), pickup_warehouse:warehouses!orders_pickup_warehouse_id_fkey(province, region_code), delivery_warehouse:warehouses!orders_delivery_warehouse_id_fkey(province, region_code)")
     .eq("tracking_code", trackingCode.toUpperCase())
     .maybeSingle();
   if (orderError) return fail("Không thể tra cứu vận đơn lúc này", 500);
@@ -84,7 +84,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
   timeline.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
 
-  const estimate = estimateDeliveryDate(order.created_at, order.service_type, order.expected_delivery_date);
+  const zone = routeZone(relationValue(order.pickup_warehouse), relationValue(order.delivery_warehouse));
+  const estimate = estimateDeliveryDate(order.created_at, order.service_type, order.expected_delivery_date, zone);
   const response = ok({
     order: {
       tracking_code: order.tracking_code,

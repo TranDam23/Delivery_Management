@@ -5,7 +5,8 @@ import type { Json } from "@delivery/database";
 import { fail, ok } from "@/lib/api-response";
 import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
 import { guestOrderSchema } from "@/lib/guest-order-schema";
-import { calculateShippingFee } from "@/lib/shipping-fee";
+import { calculateShippingFee, isServiceAvailable } from "@/lib/shipping-fee";
+import { zoneForProvinces } from "@/lib/shipping-zone";
 import { verifyGuestEmailOtp } from "@/lib/guest-email-otp";
 import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
@@ -52,6 +53,11 @@ export async function POST(request: NextRequest) {
   const delivery = selectNearestWarehouse(input.receiver, warehouses);
   if (!pickup || !delivery) return fail("Chưa có kho hoạt động phục vụ địa chỉ gửi hoặc nhận.");
 
+  let zone;
+  try { zone = await zoneForProvinces(input.sender.province, input.receiver.province); }
+  catch { return fail("Chưa tính được phạm vi tuyến lúc này.", 503); }
+  if (!isServiceAvailable(input.serviceType, zone)) return fail("Dịch vụ giao trong ngày chỉ áp dụng nội tỉnh. Hãy chọn dịch vụ khác.");
+
   let verified: { userId: string } | null;
   try { verified = await verifyGuestEmailOtp(input.email, input.otp); }
   catch { return fail("Dịch vụ xác thực email chưa sẵn sàng.", 503); }
@@ -71,7 +77,7 @@ export async function POST(request: NextRequest) {
     trackingCode,
     pickupWarehouseId: pickup.id,
     deliveryWarehouseId: delivery.id,
-    totalFee: calculateShippingFee(input.serviceType, [{ weight: input.item.weight ?? undefined, quantity: input.item.quantity }]),
+    totalFee: calculateShippingFee(input.serviceType, [{ weight: input.item.weight ?? undefined, quantity: input.item.quantity }], zone),
     verifiedAuthUserId: verified.userId,
   };
   const { data, error } = await getSupabaseServiceClient().rpc("create_guest_order", { p_payload: payload as Json });
