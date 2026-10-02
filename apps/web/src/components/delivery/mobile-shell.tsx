@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Home, LogOut, Route, ScanLine, type LucideIcon } from "lucide-react";
+import { Bell, Home, LogOut, Route, ScanLine, WalletCards, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -8,12 +8,13 @@ import type { AuthenticatedUser } from "@delivery/shared";
 import { clearAuth, getStoredUser } from "@/lib/api-client";
 import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
 
-export type DeliveryTab = "home" | "routes" | "scan" | "notifications";
+export type DeliveryTab = "home" | "routes" | "scan" | "cod" | "notifications";
 
 const NAV: Array<{ tab: DeliveryTab; label: string; icon: LucideIcon; href: string }> = [
   { tab: "home", label: "Trang chủ", icon: Home, href: "/dashboard/delivery" },
   { tab: "routes", label: "Chặng giao", icon: Route, href: "/dashboard/delivery/routes" },
   { tab: "scan", label: "Quét mã", icon: ScanLine, href: "/dashboard/delivery/routes?scan=1" },
+  { tab: "cod", label: "COD", icon: WalletCards, href: "/dashboard/delivery/cod" },
   { tab: "notifications", label: "Thông báo", icon: Bell, href: "/dashboard/delivery/notifications" },
 ];
 
@@ -74,7 +75,7 @@ export function DeliveryMobileShell({
         <main className="flex-1 px-4 pb-28 pt-4">{children}</main>
 
         <nav
-          className="fixed inset-x-0 bottom-0 z-30 mx-auto grid w-full max-w-[480px] grid-cols-4 border-t border-dt-border bg-[#15161b]/95 px-2 pt-1.5 backdrop-blur sm:border-x"
+          className="fixed inset-x-0 bottom-0 z-30 mx-auto grid w-full max-w-[480px] grid-cols-5 border-t border-dt-border bg-[#15161b]/95 px-2 pt-1.5 backdrop-blur sm:border-x"
           style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
           aria-label="Điều hướng nhân viên giao nhận"
         >

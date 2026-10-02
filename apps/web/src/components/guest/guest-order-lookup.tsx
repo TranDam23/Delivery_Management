@@ -5,7 +5,7 @@ import Link from "next/link";
 import { TextField } from "@/components/ui/field";
 import { guestPost } from "./guest-api";
 
-type FoundOrder = { tracking_code: string; created_at: string };
+type FoundOrder = { tracking_code: string; created_at: string; cod_amount: number; cod_status: "pending" | "collected" | "reconciled"; total_fee: number; shipping_fee_payer: "sender" | "receiver" | null; shipping_payment_method: "cash" | "vietqr" | "momo" | null; shipping_payment_status: "pending" | "paid" };
 
 export function GuestOrderLookup(): React.JSX.Element {
   const [email, setEmail] = useState("");
@@ -58,7 +58,7 @@ export function GuestOrderLookup(): React.JSX.Element {
     <button type="submit" disabled={busy || (!otp && !lookupToken)} className="rounded-md bg-dt-yellow px-5 py-3 text-sm font-semibold text-dt-bg disabled:opacity-50">{busy ? "Đang kiểm tra…" : "Xem mã vận đơn"}</button>
     {items && <div className="space-y-2 border-t border-dt-border pt-4">
       <h2 className="text-sm font-semibold">{items.length ? "Các đơn đã tìm thấy" : "Không tìm thấy đơn nào khớp thông tin đã xác thực."}</h2>
-      {items.map((item) => <Link key={item.tracking_code} href={`/tra-cuu/${encodeURIComponent(item.tracking_code)}`} className="block rounded border border-dt-border p-3 text-sm text-dt-yellow hover:border-dt-yellow">{item.tracking_code} <span className="ml-2 text-xs text-dt-muted">{new Date(item.created_at).toLocaleDateString("vi-VN")}</span></Link>)}
+      {items.map((item) => <Link key={item.tracking_code} href={`/tra-cuu/${encodeURIComponent(item.tracking_code)}`} className="block rounded border border-dt-border p-3 text-sm text-dt-yellow hover:border-dt-yellow">{item.tracking_code} <span className="ml-2 text-xs text-dt-muted">{new Date(item.created_at).toLocaleDateString("vi-VN")}</span><span className="mt-1 block text-xs text-dt-muted">Phí giao hàng {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(item.total_fee)} · {item.shipping_fee_payer === "sender" ? "Người gửi trả" : item.shipping_fee_payer === "receiver" ? "Người nhận trả" : "Đơn cũ chưa rõ người trả"} · {item.shipping_payment_method === "cash" ? "Tiền mặt" : item.shipping_payment_method === "vietqr" ? "VietQR" : item.shipping_payment_method === "momo" ? "MoMo" : "Chưa rõ phương thức"} · {item.shipping_payment_status === "paid" ? "Đã xác nhận thanh toán" : "Chưa xác nhận thanh toán"}</span>{item.cod_amount > 0 ? <span className="mt-1 block text-xs text-dt-muted">COD {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(item.cod_amount)} · {item.cod_status === "pending" ? "Chưa thu" : item.cod_status === "collected" ? "Đã thu, chờ đối soát" : "Đã đối soát, chưa xác nhận chuyển trả"}</span> : null}</Link>)}
       {total > 20 && <div className="flex items-center justify-between gap-3 pt-2 text-xs text-dt-muted">
         <button type="button" disabled={busy || page <= 1} onClick={() => void loadPage(page - 1)} className="rounded border border-dt-border px-3 py-2 disabled:opacity-40">Trước</button>
         <span>Trang {page}/{Math.ceil(total / 20)} · {total} đơn</span>

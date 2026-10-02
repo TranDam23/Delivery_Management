@@ -4,7 +4,8 @@ import { BlockchainEventType } from "@delivery/shared";
 import type { Json } from "@delivery/database";
 import { fail, ok } from "@/lib/api-response";
 import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
-import { guestOrderSchema, GUEST_SERVICE_FEES } from "@/lib/guest-order-schema";
+import { guestOrderSchema } from "@/lib/guest-order-schema";
+import { calculateShippingFee } from "@/lib/shipping-fee";
 import { verifyGuestEmailOtp } from "@/lib/guest-email-otp";
 import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
@@ -26,6 +27,12 @@ export async function POST(request: NextRequest) {
   const parsed = guestOrderSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Thông tin đơn hàng không hợp lệ.");
   const input = parsed.data;
+  if ((input.shippingFeePayer === undefined) !== (input.shippingPaymentMethod === undefined)) {
+    return fail("Cần chọn cả người trả và phương thức thanh toán phí vận chuyển.", 400);
+  }
+  if (input.shippingPaymentMethod !== undefined && input.shippingPaymentMethod !== "cash") {
+    return fail("VietQR và MoMo chưa có tài khoản nhận tiền/callback xác thực; hiện chỉ có thể chọn tiền mặt.", 503);
+  }
   const { data: warehouses, error: warehousesError } = await fetchActiveCommuneWarehouses<Warehouse>(
     "id, code, name, province, district, ward, latitude, longitude",
   );
@@ -56,13 +63,15 @@ export async function POST(request: NextRequest) {
     sender: input.sender,
     receiver: input.receiver,
     serviceType: input.serviceType,
+    shippingFeePayer: input.shippingFeePayer,
+    shippingPaymentMethod: input.shippingPaymentMethod,
     codAmount: input.codAmount,
     note: input.note,
     item: input.item,
     trackingCode,
     pickupWarehouseId: pickup.id,
     deliveryWarehouseId: delivery.id,
-    totalFee: GUEST_SERVICE_FEES[input.serviceType],
+    totalFee: calculateShippingFee(input.serviceType, [{ weight: input.item.weight ?? undefined, quantity: input.item.quantity }]),
     verifiedAuthUserId: verified.userId,
   };
   const { data, error } = await getSupabaseServiceClient().rpc("create_guest_order", { p_payload: payload as Json });

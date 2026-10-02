@@ -291,6 +291,9 @@ export function DeliveryRoutesPage(): React.JSX.Element {
           <p className="mt-0.5 text-[14px] font-medium">{stop.address?.recipient_name ?? "—"}</p>
           <p className="mt-1 text-[13px] leading-5 text-dt-text/90">{addressLine(stop.address)}</p>
           {showCod ? <p className="mt-2 inline-flex rounded-md bg-dt-yellow/10 px-2 py-1 text-[13px]">Thu COD: <strong className="ml-1 text-dt-yellow">{formatVnd(codAmount)}</strong></p> : null}
+          {!leg.is_return && order?.shipping_payment_method === "cash" && order.shipping_payment_status !== "paid"
+            && ((leg.leg_type === ShipmentLegType.PICKUP && order.shipping_fee_payer === "sender") || (leg.leg_type === ShipmentLegType.LAST_MILE && order.shipping_fee_payer === "receiver"))
+            ? <p className="mt-2 text-[12px] text-dt-muted">Phí vận chuyển riêng ({order.shipping_fee_payer === "sender" ? "người gửi" : "người nhận"} trả): {formatVnd(Number(order.total_fee))} · chưa xác nhận thu</p> : null}
 
           {inTodo || expanded ? (
             <div className="mt-3 grid grid-cols-2 gap-2">

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -300,69 +300,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      guest_orders: {
-        Row: {
-          order_id: string
-          sender_email: string
-          sender_phone: string
-          verified_auth_user_id: string
-          created_at: string
-        }
-        Insert: {
-          order_id: string
-          sender_email: string
-          sender_phone: string
-          verified_auth_user_id: string
-          created_at?: string
-        }
-        Update: {
-          order_id?: string
-          sender_email?: string
-          sender_phone?: string
-          verified_auth_user_id?: string
-          created_at?: string
-        }
-        Relationships: [{
-          foreignKeyName: "guest_orders_order_id_fkey"
-          columns: ["order_id"]
-          isOneToOne: true
-          referencedRelation: "orders"
-          referencedColumns: ["id"]
-        }]
-      }
-      order_feedback_recipients: {
-        Row: { order_id: string; recipient_email: string; created_at: string }
-        Insert: { order_id: string; recipient_email: string; created_at?: string }
-        Update: { order_id?: string; recipient_email?: string; created_at?: string }
-        Relationships: [{
-          foreignKeyName: "order_feedback_recipients_order_id_fkey"
-          columns: ["order_id"]
-          isOneToOne: true
-          referencedRelation: "orders"
-          referencedColumns: ["id"]
-        }]
-      }
-      order_feedback: {
-        Row: {
-          id: string; order_id: string; kind: string; rating: number | null
-          message: string; verified_auth_user_id: string; created_at: string
-        }
-        Insert: {
-          id?: string; order_id: string; kind: string; rating?: number | null
-          message: string; verified_auth_user_id: string; created_at?: string
-        }
-        Update: {
-          id?: string; order_id?: string; kind?: string; rating?: number | null
-          message?: string; verified_auth_user_id?: string; created_at?: string
-        }
-        Relationships: [{
-          foreignKeyName: "order_feedback_order_id_fkey"
-          columns: ["order_id"]
-          isOneToOne: false
-          referencedRelation: "orders"
-          referencedColumns: ["id"]
-        }]
       }
       contacts: {
         Row: {
@@ -657,6 +594,38 @@ export type Database = {
           },
         ]
       }
+      guest_orders: {
+        Row: {
+          created_at: string
+          order_id: string
+          sender_email: string
+          sender_phone: string
+          verified_auth_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          sender_email: string
+          sender_phone: string
+          verified_auth_user_id: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          sender_email?: string
+          sender_phone?: string
+          verified_auth_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -704,6 +673,70 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_feedback: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          message: string
+          order_id: string
+          rating: number | null
+          verified_auth_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          message: string
+          order_id: string
+          rating?: number | null
+          verified_auth_user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          message?: string
+          order_id?: string
+          rating?: number | null
+          verified_auth_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_feedback_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_feedback_recipients: {
+        Row: {
+          created_at: string
+          order_id: string
+          recipient_email: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          recipient_email: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          recipient_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_feedback_recipients_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]
@@ -799,6 +832,9 @@ export type Database = {
           receiver_id: string
           sender_id: string
           service_type: string
+          shipping_fee_payer: string | null
+          shipping_payment_method: string | null
+          shipping_payment_status: string
           status_id: string
           total_fee: number
           tracking_code: string
@@ -820,6 +856,9 @@ export type Database = {
           receiver_id: string
           sender_id: string
           service_type?: string
+          shipping_fee_payer?: string | null
+          shipping_payment_method?: string | null
+          shipping_payment_status?: string
           status_id: string
           total_fee?: number
           tracking_code: string
@@ -841,6 +880,9 @@ export type Database = {
           receiver_id?: string
           sender_id?: string
           service_type?: string
+          shipping_fee_payer?: string | null
+          shipping_payment_method?: string | null
+          shipping_payment_status?: string
           status_id?: string
           total_fee?: number
           tracking_code?: string
@@ -905,6 +947,41 @@ export type Database = {
           },
         ]
       }
+      password_reset_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          token_hash: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          token_hash: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token_hash?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "password_reset_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           code: string
@@ -934,6 +1011,59 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      public_tracking_rate_limits: {
+        Row: {
+          client_key: string
+          request_count: number
+          window_started_at: string
+        }
+        Insert: {
+          client_key: string
+          request_count?: number
+          window_started_at?: string
+        }
+        Update: {
+          client_key?: string
+          request_count?: number
+          window_started_at?: string
+        }
+        Relationships: []
+      }
+      refresh_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          revoked_at: string | null
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          revoked_at?: string | null
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refresh_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_permissions: {
         Row: {
@@ -991,6 +1121,192 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      shipment_legs: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          assigned_staff_id: string | null
+          attempt_no: number
+          completed_at: string | null
+          created_at: string
+          from_warehouse_id: string | null
+          id: string
+          is_return: boolean
+          leg_type: string
+          note: string | null
+          order_id: string
+          responsibility_province: string | null
+          sequence_no: number
+          started_at: string | null
+          status: string
+          to_warehouse_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_staff_id?: string | null
+          attempt_no?: number
+          completed_at?: string | null
+          created_at?: string
+          from_warehouse_id?: string | null
+          id?: string
+          is_return?: boolean
+          leg_type: string
+          note?: string | null
+          order_id: string
+          responsibility_province?: string | null
+          sequence_no: number
+          started_at?: string | null
+          status?: string
+          to_warehouse_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          assigned_staff_id?: string | null
+          attempt_no?: number
+          completed_at?: string | null
+          created_at?: string
+          from_warehouse_id?: string | null
+          id?: string
+          is_return?: boolean
+          leg_type?: string
+          note?: string | null
+          order_id?: string
+          responsibility_province?: string | null
+          sequence_no?: number
+          started_at?: string | null
+          status?: string
+          to_warehouse_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_legs_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_from_warehouse_id_fkey"
+            columns: ["from_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_legs_to_warehouse_id_fkey"
+            columns: ["to_warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_settings: {
+        Row: {
+          description: string | null
+          id: string
+          key: string
+          updated_at: string
+          value: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string
+          value?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: string | null
+        }
+        Relationships: []
+      }
+      users: {
+        Row: {
+          avatar: string | null
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          last_login_at: string | null
+          password_hash: string
+          phone: string | null
+          province: string | null
+          role_id: string
+          status: Database["public"]["Enums"]["user_status"]
+          updated_at: string
+          warehouse_id: string | null
+        }
+        Insert: {
+          avatar?: string | null
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          last_login_at?: string | null
+          password_hash: string
+          phone?: string | null
+          province?: string | null
+          role_id: string
+          status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string
+          warehouse_id?: string | null
+        }
+        Update: {
+          avatar?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          last_login_at?: string | null
+          password_hash?: string
+          phone?: string | null
+          province?: string | null
+          role_id?: string
+          status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string
+          warehouse_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "users_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       warehouse_events: {
         Row: {
@@ -1134,192 +1450,6 @@ export type Database = {
           },
         ]
       }
-      shipment_legs: {
-        Row: {
-          attempt_no: number
-          assigned_at: string | null
-          assigned_by: string | null
-          assigned_staff_id: string | null
-          completed_at: string | null
-          created_at: string
-          from_warehouse_id: string | null
-          id: string
-          is_return: boolean
-          leg_type: string
-          note: string | null
-          order_id: string
-          responsibility_province: string | null
-          sequence_no: number
-          started_at: string | null
-          status: string
-          to_warehouse_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          attempt_no?: number
-          assigned_at?: string | null
-          assigned_by?: string | null
-          assigned_staff_id?: string | null
-          completed_at?: string | null
-          created_at?: string
-          from_warehouse_id?: string | null
-          id?: string
-          is_return?: boolean
-          leg_type: string
-          note?: string | null
-          order_id: string
-          responsibility_province?: string | null
-          sequence_no: number
-          started_at?: string | null
-          status?: string
-          to_warehouse_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          attempt_no?: number
-          assigned_at?: string | null
-          assigned_by?: string | null
-          assigned_staff_id?: string | null
-          completed_at?: string | null
-          created_at?: string
-          from_warehouse_id?: string | null
-          id?: string
-          is_return?: boolean
-          leg_type?: string
-          note?: string | null
-          order_id?: string
-          responsibility_province?: string | null
-          sequence_no?: number
-          started_at?: string | null
-          status?: string
-          to_warehouse_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "shipment_legs_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shipment_legs_assigned_staff_id_fkey"
-            columns: ["assigned_staff_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shipment_legs_from_warehouse_id_fkey"
-            columns: ["from_warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "warehouses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shipment_legs_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shipment_legs_to_warehouse_id_fkey"
-            columns: ["to_warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "warehouses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      system_settings: {
-        Row: {
-          description: string | null
-          id: string
-          key: string
-          updated_at: string
-          value: string | null
-        }
-        Insert: {
-          description?: string | null
-          id?: string
-          key: string
-          updated_at?: string
-          value?: string | null
-        }
-        Update: {
-          description?: string | null
-          id?: string
-          key?: string
-          updated_at?: string
-          value?: string | null
-        }
-        Relationships: []
-      }
-      users: {
-        Row: {
-          avatar: string | null
-          created_at: string
-          email: string
-          full_name: string
-          id: string
-          last_login_at: string | null
-          password_hash: string
-          phone: string | null
-          province: string | null
-          role_id: string
-          status: Database["public"]["Enums"]["user_status"]
-          updated_at: string
-          warehouse_id: string | null
-        }
-        Insert: {
-          avatar?: string | null
-          created_at?: string
-          email: string
-          full_name: string
-          id?: string
-          last_login_at?: string | null
-          password_hash: string
-          phone?: string | null
-          province?: string | null
-          role_id: string
-          status?: Database["public"]["Enums"]["user_status"]
-          updated_at?: string
-          warehouse_id?: string | null
-        }
-        Update: {
-          avatar?: string | null
-          created_at?: string
-          email?: string
-          full_name?: string
-          id?: string
-          last_login_at?: string | null
-          password_hash?: string
-          phone?: string | null
-          province?: string | null
-          role_id?: string
-          status?: Database["public"]["Enums"]["user_status"]
-          updated_at?: string
-          warehouse_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "users_role_id_fkey"
-            columns: ["role_id"]
-            isOneToOne: false
-            referencedRelation: "roles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "users_warehouse_id_fkey"
-            columns: ["warehouse_id"]
-            isOneToOne: false
-            referencedRelation: "warehouses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -1327,10 +1457,27 @@ export type Database = {
     Functions: {
       create_guest_order: {
         Args: { p_payload: Json }
-        Returns: { order_id: string; tracking_code: string; actor_id: string }[]
+        Returns: {
+          actor_id: string
+          order_id: string
+          tracking_code: string
+        }[]
+      }
+      notify_order_customers: {
+        Args: {
+          p_message: string
+          p_order_id: string
+          p_title: string
+          p_type: string
+        }
+        Returns: undefined
       }
       take_public_tracking_slot: {
-        Args: { p_client_key: string; p_limit: number; p_window_seconds: number }
+        Args: {
+          p_client_key: string
+          p_limit: number
+          p_window_seconds: number
+        }
         Returns: boolean
       }
     }
@@ -1354,12 +1501,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1383,11 +1530,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1408,11 +1555,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1433,11 +1580,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1450,11 +1597,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

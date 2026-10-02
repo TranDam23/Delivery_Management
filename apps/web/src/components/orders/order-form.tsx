@@ -21,6 +21,9 @@ import { AddressLocationFields } from "@/components/locations/address-location-f
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
 import { apiFetch } from "@/lib/api-client";
+import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
+import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
+import { calculateShippingFee } from "@/lib/shipping-fee";
 
 interface FormState {
   senderId: string;
@@ -265,6 +268,8 @@ async function ensureManualContact({
 export function NewOrderPage(): React.JSX.Element {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [shippingFeePayer, setShippingFeePayer] = useState<ShippingFeePayer>("sender");
+  const [shippingPaymentMethod, setShippingPaymentMethod] = useState<ShippingPaymentMethod>("cash");
   const [senderSource, setSenderSource] = useState<ContactSource>("addressBook");
   const [receiverSource, setReceiverSource] = useState<ContactSource>("addressBook");
   const [manualSender, setManualSender] = useState<ManualContactForm>(EMPTY_MANUAL_CONTACT);
@@ -311,8 +316,7 @@ export function NewOrderPage(): React.JSX.Element {
   const selectedSender = contacts.find((contact) => contact.id === form.senderId);
   const selectedReceiver = contacts.find((contact) => contact.id === form.receiverId);
   const weight = numericValue(form.weight);
-  const baseFee = form.serviceType === "express" ? 50000 : form.serviceType === "same_day" ? 70000 : 30000;
-  const estimatedFee = baseFee + Math.max(0, weight - 1) * 5000;
+  const estimatedFee = calculateShippingFee(form.serviceType as "standard" | "express" | "same_day", [{ weight, quantity: numericValue(form.quantity) || 1 }]);
 
   function update(field: keyof FormState, value: string): void {
     setForm((current) => ({ ...current, [field]: value }));
@@ -406,7 +410,8 @@ export function NewOrderPage(): React.JSX.Element {
           delivery_address_id: deliveryAddress.id,
           service_type: form.serviceType,
           cod_amount: codAmount,
-          total_fee: estimatedFee,
+          shipping_fee_payer: shippingFeePayer,
+          shipping_payment_method: shippingPaymentMethod,
           note: form.note.trim() || undefined,
           items: [{
             item_name: form.itemName.trim(),
@@ -594,10 +599,7 @@ export function NewOrderPage(): React.JSX.Element {
               {SERVICE_OPTIONS.map((option) => <option key={option.value} value={option.value} className="bg-dt-panel2">{option.label}</option>)}
             </SelectField>
             <TextField label="COD cần thu hộ" type="number" min="0" step="1000" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
-            <div className="rounded-md border border-dt-yellow/25 bg-dt-yellow/5 p-3">
-              <div className="flex items-center justify-between gap-3 text-[12px]"><span className="text-dt-muted">Phí giao dự kiến</span><strong className="text-dt-yellow">{estimatedFee.toLocaleString("vi-VN")}đ</strong></div>
-              <p className="mt-1 text-[10px] leading-4 text-dt-muted">Phí thực tế có thể được điều chỉnh theo quy định vận hành.</p>
-            </div>
+            <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} />
           </Card>
 
           <Card className="border-dt-green/25 bg-dt-green/5">

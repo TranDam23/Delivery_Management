@@ -51,12 +51,16 @@ export async function POST(request: NextRequest) {
   const ids = (matches ?? []).map((row) => row.order_id);
   if (ids.length === 0) return ok({ items: [], total: count ?? 0, page: parsed.data.page, pageSize, lookupToken });
   const { data: orders, error: ordersError } = await supabase.from("orders")
-    .select("id, tracking_code, created_at")
+    .select("id, tracking_code, created_at, cod_amount, total_fee, shipping_fee_payer, shipping_payment_method, shipping_payment_status")
     .in("id", ids);
   if (ordersError) return fail("Không tra được đơn hàng lúc này.", 503);
+  const { data: codRows, error: codError } = await supabase.from("cod_transactions")
+    .select("order_id, status").in("order_id", ids);
+  if (codError) return fail("Không tra được trạng thái COD lúc này.", 503);
+  const codByOrder = new Map((codRows ?? []).map((row) => [row.order_id, row.status]));
   const byId = new Map((orders ?? []).map((order) => [order.id, order]));
   return ok({ items: ids.flatMap((id) => {
     const order = byId.get(id);
-    return order ? [{ tracking_code: order.tracking_code, created_at: order.created_at }] : [];
+    return order ? [{ tracking_code: order.tracking_code, created_at: order.created_at, cod_amount: Number(order.cod_amount), cod_status: codByOrder.get(id) ?? "pending", total_fee: Number(order.total_fee), shipping_fee_payer: order.shipping_fee_payer, shipping_payment_method: order.shipping_payment_method, shipping_payment_status: order.shipping_payment_status }] : [];
   }), total: count ?? 0, page: parsed.data.page, pageSize, lookupToken });
 }
