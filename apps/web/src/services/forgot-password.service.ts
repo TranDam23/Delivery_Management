@@ -1,15 +1,21 @@
-import { createHash, randomBytes } from "node:crypto";
-import type { ForgotPasswordReqBody } from "@/requests/auth.requests";
+import { randomBytes } from "node:crypto";
+import type {
+  ForgotPasswordReqBody,
+  VerifyPasswordRecoveryOtpReqBody,
+} from "@/requests/auth.requests";
+import {
+  hashPasswordResetToken,
+  PASSWORD_RESET_TOKEN_TTL_SECONDS,
+} from "@/lib/password-reset";
+import {
+  sendPasswordRecoveryOtp,
+  verifyPasswordRecoveryOtp,
+} from "@/lib/supabase-password-recovery";
 import { PasswordResetTokenRepository } from "@/repositories/password-reset-token.repository";
 import { UserRepository } from "@/repositories/user.repository";
 
-const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
-const PASSWORD_RESET_MESSAGE =
-  "If the email exists, a password reset token has been created.";
-
-function hashPasswordResetToken(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex");
-}
+export const PASSWORD_RESET_REQUEST_MESSAGE =
+  "Nếu email thuộc tài khoản đủ điều kiện, hướng dẫn xác minh sẽ được gửi đến địa chỉ đó.";
 
 export class ForgotPasswordService {
   constructor(
@@ -17,25 +23,33 @@ export class ForgotPasswordService {
     private readonly passwordResetTokens: PasswordResetTokenRepository,
   ) {}
 
-  async createResetToken(
-    input: ForgotPasswordReqBody,
-  ): Promise<{ message: string; resetToken?: string }> {
-    const user = await this.users.findPublicByEmail(
-      input.email.trim().toLowerCase(),
-    );
-    if (!user) return { message: PASSWORD_RESET_MESSAGE };
+  async requestOtp(input: ForgotPasswordReqBody): Promise<void> {
+    const email = input.email.trim().toLowerCase();
+    const user = await this.users.findPublicByEmail(email);
+    if (!user) return;
 
-    const resetToken = randomBytes(32).toString("hex");
-    const expiresAt = new Date(
-      Date.now() + PASSWORD_RESET_TOKEN_TTL_MS,
-    ).toISOString();
+    await sendPasswordRecoveryOtp(email);
+  }
 
+  async verifyOtp(
+    input: VerifyPasswordRecoveryOtpReqBody,
+  ): Promise<string | null> {
+    const email = input.email.trim().toLowerCase();
+    const user = await this.users.findPublicByEmail(email);
+    if (!user) return null;
+
+    const verified = await verifyPasswordRecoveryOtp(email, input.otp);
+    if (!verified) return null;
+
+    const resetToken = randomBytes(32).toString("base64url");
     await this.passwordResetTokens.create({
       user_id: user.id,
       token_hash: hashPasswordResetToken(resetToken),
-      expires_at: expiresAt,
+      expires_at: new Date(
+        Date.now() + PASSWORD_RESET_TOKEN_TTL_SECONDS * 1000,
+      ).toISOString(),
     });
 
-    return { message: PASSWORD_RESET_MESSAGE, resetToken };
+    return resetToken;
   }
 }

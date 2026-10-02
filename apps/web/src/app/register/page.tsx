@@ -428,7 +428,7 @@ export default function RegisterPage(): React.JSX.Element {
                   ? (otpSent ? "Đang xác minh và tạo tài khoản..." : "Đang gửi mã OTP...")
                   : otpSent
                     ? <>Xác minh và hoàn tất đăng ký <ArrowRight size={15} /></>
-                    : <>Gửi mã OTP <ArrowRight size={15} /></>}
+                    : <>Đăng ký <ArrowRight size={15} /></>}
               </Button>
               <p className="mt-4 text-center text-[10px] text-[#8492a9]">Đã có tài khoản? <Link href="/login" className="font-semibold text-dt-yellow hover:underline">Đăng nhập ngay <ArrowRight className="inline" size={11} /></Link></p>
               <p className="mt-5 flex items-center justify-center gap-1.5 text-[9px] text-[#75839a]"><LockKeyhole size={11} className="text-[#63d2b3]" /> Dữ liệu được mã hóa và bảo vệ theo tiêu chuẩn nền tảng</p>

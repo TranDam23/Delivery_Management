@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { resetPasswordSchema } from "@/validations/auth.validation";
 
 interface ResetPasswordResponse {
@@ -12,7 +12,6 @@ interface ResetPasswordResponse {
 }
 
 export default function ResetPasswordPage(): React.JSX.Element {
-  const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -21,18 +20,12 @@ export default function ResetPasswordPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get("token");
-    if (token) setResetToken(token);
-  }, []);
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError(null);
     setSuccessMessage(null);
 
     const parsed = resetPasswordSchema.safeParse({
-      resetToken,
       newPassword,
       confirmPassword,
     });
@@ -99,25 +92,11 @@ export default function ResetPasswordPage(): React.JSX.Element {
           <div className="mb-6">
             <h2 className="text-[18px] font-semibold text-dt-text">Đặt lại mật khẩu</h2>
             <p className="mt-2 text-[11px] leading-5 text-dt-muted">
-              Tạo mật khẩu mới đáp ứng tiêu chuẩn bảo mật của tài khoản.
+              Tạo mật khẩu mới sau khi xác minh OTP khôi phục qua email.
             </p>
           </div>
 
           <label className="flex flex-col gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-dt-muted">Mã đặt lại mật khẩu</span>
-            <span className="relative">
-              <KeyRound size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#55565b]" />
-              <input
-                value={resetToken}
-                onChange={(event) => setResetToken(event.target.value)}
-                placeholder="Dán mã đặt lại mật khẩu"
-                autoComplete="one-time-code"
-                className="h-[46px] w-full rounded-[4px] border border-[#414247] bg-[#f5f5f5] pl-10 pr-3 text-[13px] text-[#242529] outline-none transition placeholder:text-[#888a8f] focus:border-dt-yellow focus:ring-2 focus:ring-dt-yellow/20"
-              />
-            </span>
-          </label>
-
-          <label className="mt-5 flex flex-col gap-2">
             <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-dt-muted">Mật khẩu mới</span>
             <span className="relative">
               <LockKeyhole size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#55565b]" />

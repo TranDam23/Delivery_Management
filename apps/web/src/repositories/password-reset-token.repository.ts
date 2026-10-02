@@ -26,27 +26,18 @@ export class PasswordResetTokenRepository {
     return data;
   }
 
-  async findByTokenHash(
+  async consumeAndUpdatePassword(
     tokenHash: PasswordResetTokenRecord["token_hash"],
-  ): Promise<PasswordResetTokenRecord | null> {
+    passwordHash: string,
+  ): Promise<boolean> {
     const { data, error } = await this.database
       .getClient()
-      .from("password_reset_tokens")
-      .select("id, user_id, token_hash, expires_at, used_at, created_at")
-      .eq("token_hash", tokenHash)
-      .maybeSingle();
+      .rpc("reset_password_with_token", {
+        p_token_hash: tokenHash,
+        p_password_hash: passwordHash,
+      });
 
-    if (error) throw new Error("Failed to load password reset token");
-    return data;
-  }
-
-  async markAsUsed(id: PasswordResetTokenRecord["id"]): Promise<void> {
-    const { error } = await this.database
-      .getClient()
-      .from("password_reset_tokens")
-      .update({ used_at: new Date().toISOString() })
-      .eq("id", id);
-
-    if (error) throw new Error("Failed to mark password reset token as used");
+    if (error) throw new Error("Failed to reset password");
+    return data === true;
   }
 }

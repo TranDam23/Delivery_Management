@@ -74,13 +74,29 @@ export const changePasswordSchema = z
 
 export const forgotPasswordSchema = z
   .object({
-    email: z.string().trim().email("email must be a valid email address"),
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("email must be a valid email address")
+      .max(254),
+  })
+  .strict();
+
+export const verifyPasswordRecoveryOtpSchema = z
+  .object({
+    email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email("email must be a valid email address")
+      .max(254),
+    otp: z.string().trim().regex(/^\d{6,8}$/, "otp must contain 6 to 8 digits"),
   })
   .strict();
 
 export const resetPasswordSchema = z
   .object({
-    resetToken: z.string().min(1, "resetToken is required"),
     newPassword: z
       .string()
       .min(8, "newPassword must be at least 8 characters")
@@ -89,7 +105,16 @@ export const resetPasswordSchema = z
       .regex(/[0-9]/, "newPassword must contain a number"),
     confirmPassword: z.string().min(1, "confirmPassword is required"),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.newPassword !== value.confirmPassword) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmPassword"],
+        message: "confirmPassword must match newPassword",
+      });
+    }
+  });
 
 export const updateUserProfileSchema = z
   .object({
@@ -180,6 +205,25 @@ export function validateForgotPasswordInput(
   body: unknown,
 ): ForgotPasswordValidationResult {
   const result = forgotPasswordSchema.safeParse(body);
+  if (result.success) return { success: true, data: result.data };
+
+  const message = result.error.issues
+    .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+    .join("; ");
+  return { success: false, error: `Validation failed: ${message}` };
+}
+
+export type VerifyPasswordRecoveryOtpValidationResult =
+  | {
+      success: true;
+      data: import("@/requests/auth.requests").VerifyPasswordRecoveryOtpReqBody;
+    }
+  | { success: false; error: string };
+
+export function validateVerifyPasswordRecoveryOtpInput(
+  body: unknown,
+): VerifyPasswordRecoveryOtpValidationResult {
+  const result = verifyPasswordRecoveryOtpSchema.safeParse(body);
   if (result.success) return { success: true, data: result.data };
 
   const message = result.error.issues

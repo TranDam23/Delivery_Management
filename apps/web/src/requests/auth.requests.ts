@@ -26,8 +26,12 @@ export interface ForgotPasswordReqBody {
   email: string;
 }
 
+export interface VerifyPasswordRecoveryOtpReqBody {
+  email: string;
+  otp: string;
+}
+
 export interface ResetPasswordReqBody {
-  resetToken: string;
   newPassword: string;
   confirmPassword: string;
 }
