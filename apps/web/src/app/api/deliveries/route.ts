@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { OrderStatusCode, RoleCode, ShipmentLegStatusCode, ShipmentLegType } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { writeAuditLog } from "@/lib/audit";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatcher-scope";
@@ -147,5 +148,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  await writeAuditLog({ userId: auth.userId, action: "DELIVERY_ASSIGNED", entityType: "order", entityId: parsed.data.order_id, newData: { shipment_leg_id: leg.id, delivery_staff_id: staff.id, leg_type: leg.leg_type }, request });
   return ok(delivery, 201);
 }
