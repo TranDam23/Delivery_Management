@@ -53,6 +53,9 @@ export default function HomePage(): React.JSX.Element {
               <Link href="/login" className="inline-flex items-center gap-2 rounded-md bg-dt-yellow px-5 py-3 text-xs font-semibold text-dt-bg transition hover:brightness-110">
                 Bắt đầu sử dụng <ArrowRight size={15} />
               </Link>
+              <Link href="/register" className="inline-flex items-center rounded-md border border-dt-border px-5 py-3 text-xs text-dt-muted transition hover:border-dt-yellow/50 hover:text-dt-text">
+                Đăng ký
+              </Link>
               <Link href="/gui-hang" className="inline-flex items-center gap-2 rounded-md border border-dt-yellow px-5 py-3 text-xs font-semibold text-dt-yellow transition hover:bg-dt-yellow/10">Gửi hàng không cần tài khoản</Link>
               <a href="#tinh-nang" className="inline-flex items-center gap-2 rounded-md border border-dt-border px-5 py-3 text-xs text-dt-muted transition hover:border-dt-yellow/50 hover:text-dt-text">
                 Khám phá tính năng <ChevronRight size={15} />

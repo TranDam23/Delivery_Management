@@ -1670,6 +1670,10 @@ export type Database = {
         Args: { p_id: string; p_note: string; p_user: string }
         Returns: undefined
       }
+      reset_password_with_token: {
+        Args: { p_password_hash: string; p_token_hash: string }
+        Returns: boolean
+      }
       take_public_tracking_slot: {
         Args: {
           p_client_key: string

@@ -4,6 +4,8 @@ Luồng: khách nhập thông tin gửi/nhận và hàng hóa → yêu cầu OTP
 
 Kết quả tra cứu hiển thị 20 đơn mỗi trang. Sau lần xác thực OTP đầu, trình duyệt giữ một vé tra cứu ngắn hạn trong bộ nhớ để chuyển trang mà không phải nhập lại OTP; vé hết hạn sau 10 phút và không được lưu vào localStorage.
 
+Trang `/register` cũng dùng cùng Supabase Auth email OTP: yêu cầu mã tại `/api/auth/register/otp`, sau đó gửi OTP cùng thông tin đăng ký tới `/api/auth/register`. Server chỉ tạo user `CUSTOMER` trong bảng `users` sau khi OTP của đúng email được xác minh và xác nhận. Endpoint đăng ký không chấp nhận cờ xác minh từ client. Đăng nhập DeliverTrust vẫn dùng bảng `users`, bcrypt và JWT hiện có; xác minh OTP không tự tạo tài khoản ứng dụng. Do helper OTP hiện đặt `shouldCreateUser: true`, Supabase Auth có thể đồng thời tạo identity Auth riêng cho email chưa có trong Auth. Nếu tạo bản ghi ứng dụng lỗi sau khi OTP đã được dùng, người dùng cần yêu cầu mã mới rồi thử lại; thông tin mật khẩu không được lưu tạm.
+
 ## Cấu hình trước khi thử thực tế
 
 1. Ba migration `20261001090000_public_tracking_rate_limit.sql`, `20261001100000_guest_email_orders.sql` và `20261001110000_delivery_feedback_and_notification_privacy.sql` đã được áp dụng lên Supabase ngày 01/10/2026 sau khi người dùng xác nhận hai người phụ trách đã duyệt. Với môi trường khác, áp dụng đủ ba migration theo thứ tự; không sửa migration đã chạy.
@@ -12,6 +14,14 @@ Kết quả tra cứu hiển thị 20 đơn mỗi trang. Sau lần xác thực O
 4. Kiểm tra `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` và `JWT_SECRET` ở môi trường web. Không đưa service-role key vào client hoặc commit file `.env`.
 5. Mở `/gui-hang` để tạo một đơn thử, nhập **email người nhận** và lưu mã vận đơn; mở `/tra-lai-ma` và dùng email người gửi để tra lại, thử cả khi có và không có số điện thoại lọc. Kiểm tra kho, tuyến và trạng thái bằng tài khoản điều phối viên.
 6. Sau khi shipper xác nhận giao thành công kèm ảnh minh chứng, đơn được đặt trạng thái `DELIVERED` ngay, không chờ người nhận xác nhận. Trên `/tra-cuu/<mã vận đơn>`, người nhận nhập email đã lưu trên đơn, nhận OTP và gửi đánh giá hoặc phản ánh. Phản ánh được lưu vào `order_feedback`, tạo `alerts` và thông báo cho điều phối viên của kho liên quan. Nhấn thông báo để đọc nội dung phản ánh; mỗi đơn nhận tối đa một đánh giá và một phản ánh. Luồng đánh dấu đã giải quyết có thể thực hiện sau.
+
+## Khôi phục mật khẩu
+
+Luồng `/forgot-password` dùng `resetPasswordForEmail` của Supabase Auth; OTP được xác minh bằng `verifyOtp` với purpose `recovery`, không dùng OTP đăng ký (`email`) hoặc OTP guest. Luồng recovery không bật tùy chọn tự tạo Auth user. Vì đăng nhập DeliverTrust vẫn xác thực `public.users.password_hash` bằng bcrypt/JWT, OTP recovery hợp lệ chỉ cấp một capability ngẫu nhiên qua cookie HttpOnly để ứng dụng cập nhật nguồn mật khẩu này; token capability chỉ lưu hash trong `password_reset_tokens`, hết hạn sau 10 phút và không xuất hiện trong JSON hoặc URL.
+
+Áp dụng migration `20261002201500_atomic_password_reset.sql` trước khi deploy reset API. Migration thêm RPC `reset_password_with_token` để tiêu thụ token một lần, cập nhật `users.password_hash` và thu hồi refresh token trong cùng transaction. Không chạy migration này tự động trên production.
+
+Tài khoản chỉ có trong `public.users` nhưng không có identity tương ứng trong Supabase Auth không nhận được email OTP recovery; API vẫn trả thông báo chung và không tự tạo identity. Các identity Supabase Auth đăng ký trước đó nhưng không có user DeliverTrust tương ứng cũng không thể nhận quyền reset ứng dụng. Template Supabase Auth → Email Templates → **Reset Password** phải hiển thị mã `{{ .Token }}` để người dùng nhập OTP; cần cấu hình Custom SMTP và xác nhận code expiry/rate limits trong Supabase Dashboard.
 
 Tham khảo tài liệu Supabase: [Email OTP](https://supabase.com/docs/guides/auth/auth-email-templates), [Custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
 

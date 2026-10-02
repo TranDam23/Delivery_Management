@@ -11,17 +11,33 @@ function otpClient() {
   });
 }
 
-export async function sendGuestEmailOtp(email: string): Promise<string | null> {
+export async function sendEmailOtp(email: string): Promise<string | null> {
   const { error } = await otpClient().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
   if (error) {
-    console.error("Guest OTP delivery failed", { code: error.code, status: error.status });
+    console.error("Email OTP delivery failed", { code: error.code, status: error.status });
     return "Không gửi được mã xác thực. Vui lòng thử lại sau hoặc kiểm tra cấu hình email.";
   }
   return null;
 }
 
-export async function verifyGuestEmailOtp(email: string, token: string): Promise<{ userId: string } | null> {
+export async function verifyEmailOtp(
+  email: string,
+  token: string,
+): Promise<{ userId: string; emailConfirmed: boolean } | null> {
   const { data, error } = await otpClient().auth.verifyOtp({ email, token, type: "email" });
   if (error || !data.user || data.user.email?.toLowerCase() !== email) return null;
-  return { userId: data.user.id };
+  return {
+    userId: data.user.id,
+    emailConfirmed: Boolean(data.user.email_confirmed_at),
+  };
+}
+
+export const sendGuestEmailOtp = sendEmailOtp;
+
+export async function verifyGuestEmailOtp(
+  email: string,
+  token: string,
+): Promise<{ userId: string } | null> {
+  const result = await verifyEmailOtp(email, token);
+  return result ? { userId: result.userId } : null;
 }

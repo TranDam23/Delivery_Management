@@ -1,24 +1,18 @@
 import type { NextRequest } from "next/server";
-import { registerController } from "@/controllers/auth.controller";
-import { validateRegisterInput } from "@/validations/auth.validation";
-import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
+import { verifyPasswordRecoveryOtpController } from "@/controllers/forgot-password.controller";
 import { fail } from "@/lib/api-response";
+import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
+import { validateVerifyPasswordRecoveryOtpInput } from "@/validations/auth.validation";
 
-/** POST /api/auth/register — public customer registration. */
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
-  const validation = validateRegisterInput(body);
-  if (!validation.success) {
-    return Response.json(
-      { success: false, error: validation.error },
-      { status: 400 },
-    );
-  }
+  const body = await request.clone().json().catch(() => null);
+  const validation = validateVerifyPasswordRecoveryOtpInput(body);
+  if (!validation.success) return fail(validation.error, 400);
 
   let slot: Awaited<ReturnType<typeof takePublicLookupSlot>>;
   try {
     slot = await takePublicLookupSlot(request, {
-      scope: "register-verify",
+      scope: "password-recovery-verify",
       limit: 5,
       windowSeconds: 600,
       subject: validation.data.email,
@@ -33,5 +27,5 @@ export async function POST(request: NextRequest) {
     return fail("Bạn đã thử quá nhiều lần. Vui lòng thử lại sau.", 429);
   }
 
-  return registerController(validation.data);
+  return verifyPasswordRecoveryOtpController(request);
 }

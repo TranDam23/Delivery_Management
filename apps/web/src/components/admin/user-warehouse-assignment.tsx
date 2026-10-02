@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, RefreshCw, Settings2, Warehouse as WarehouseIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RoleCode, WarehouseLevelCode, type Warehouse } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,12 @@ interface AdminUser {
 interface UsersResponse {
   users: AdminUser[];
   warehouses: AssignedWarehouse[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 const ROLE_OPTIONS: Array<{ code: string; label: string }> = [
@@ -41,6 +47,7 @@ const ROLE_OPTIONS: Array<{ code: string; label: string }> = [
 const STATUS_LABEL: Record<string, string> = { active: "Hoạt động", inactive: "Ngưng hoạt động", suspended: "Đã khóa" };
 
 const OPERATIONAL_ROLES: ReadonlySet<string> = new Set([RoleCode.DISPATCHER, RoleCode.DELIVERY_STAFF, RoleCode.WAREHOUSE_STAFF]);
+const USERS_PAGE_SIZE = 10;
 
 function relationValue<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -72,7 +79,15 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [warehouses, setWarehouses] = useState<AssignedWarehouse[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<UsersResponse["pagination"]>({
+    page: 1,
+    limit: USERS_PAGE_SIZE,
+    total: 0,
+    totalPages: 0,
+  });
   const [form, setForm] = useState({ full_name: "", email: "", password: "", phone: "", role_code: RoleCode.DELIVERY_STAFF as string, warehouse_id: "" });
   const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -81,13 +96,24 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadData = useCallback(async (): Promise<void> => {
+  const loadData = useCallback(async (
+    requestedPage: number,
+    requestedSearch: string,
+    requestedRole: string,
+  ): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiFetch<UsersResponse>("/api/admin/users");
+      const params = new URLSearchParams({
+        page: String(requestedPage),
+        limit: String(USERS_PAGE_SIZE),
+      });
+      if (requestedSearch) params.set("search", requestedSearch);
+      if (requestedRole) params.set("role", requestedRole);
+      const result = await apiFetch<UsersResponse>(`/api/admin/users?${params.toString()}`);
       setUsers(result.users);
       setWarehouses(result.warehouses);
+      setPagination(result.pagination);
       setDrafts(Object.fromEntries(result.users.map((user) => [user.id, user.warehouse_id ?? ""])));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không tải được danh sách tài khoản");
@@ -97,8 +123,16 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  useEffect(() => {
+    void loadData(page, debouncedSearch, roleFilter);
+  }, [debouncedSearch, loadData, page, roleFilter]);
 
   useEffect(() => {
     const role = new URLSearchParams(window.location.search).get("role");
@@ -108,11 +142,10 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
     }
   }, []);
 
-  const filteredUsers = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("vi-VN");
-    return users.filter((user) => (!roleFilter || roleCode(user) === roleFilter)
-      && (!query || `${user.full_name} ${user.email} ${roleLabel(roleCode(user))}`.toLocaleLowerCase("vi-VN").includes(query)));
-  }, [search, roleFilter, users]);
+  const filteredUsers = users;
+  const totalPages = Math.max(1, pagination.totalPages);
+  const firstResult = pagination.total === 0 ? 0 : (page - 1) * pagination.limit + 1;
+  const lastResult = Math.min(page * pagination.limit, pagination.total);
 
   async function patchUser(user: AdminUser, body: Record<string, unknown>, success: string): Promise<void> {
     setBusyId(user.id);
@@ -121,7 +154,7 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
     try {
       await apiFetch(`/api/admin/users/${user.id}`, { method: "PATCH", body: JSON.stringify(body) });
       setNotice(success);
-      await loadData();
+      await loadData(page, debouncedSearch, roleFilter);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không thể cập nhật tài khoản");
     } finally {
@@ -141,7 +174,7 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
       });
       setNotice(`Đã tạo tài khoản ${form.email}.`);
       setForm((current) => ({ ...current, full_name: "", email: "", password: "", phone: "", warehouse_id: "" }));
-      await loadData();
+      await loadData(page, debouncedSearch, roleFilter);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không thể tạo tài khoản");
     } finally {
@@ -160,7 +193,7 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
         body: JSON.stringify({ warehouse_id: selectedWarehouseId }),
       });
       setNotice(`Đã cập nhật kho phụ trách cho ${user.full_name}.`);
-      await loadData();
+      await loadData(page, debouncedSearch, roleFilter);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không thể cập nhật kho phụ trách");
     } finally {
@@ -173,7 +206,7 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
       <PageHeader
         heading="Phân công tài khoản vận hành"
         subtitle="Gán điều phối viên, nhân viên giao nhận và nhân viên kho vào đúng kho phụ trách."
-        action={<Button variant="secondary" onClick={() => void loadData()} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button>}
+        action={<Button variant="secondary" onClick={() => void loadData(page, debouncedSearch, roleFilter)} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button>}
       />
 
       {error ? <p role="alert" className="mt-4 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
@@ -209,8 +242,11 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
           <WarehouseIcon className="text-dt-yellow" size={20} />
         </div>
         <div className="grid max-w-[640px] gap-3 md:grid-cols-2">
-          <TextField label="Tìm tài khoản" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tên, email hoặc vai trò" />
-          <SelectField label="Lọc theo vai trò" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+          <TextField label="Tìm tài khoản" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tên hoặc email" />
+          <SelectField label="Lọc theo vai trò" value={roleFilter} onChange={(event) => {
+            setPage(1);
+            setRoleFilter(event.target.value);
+          }}>
             <option value="">Tất cả</option>
             {ROLE_OPTIONS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
           </SelectField>
@@ -269,6 +305,28 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
             </table>
           </div>
         ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dt-border pt-4 text-[11px] text-dt-muted">
+          <span>Hiển thị {firstResult}–{lastResult} trên {pagination.total} tài khoản</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              className="px-3 py-2 text-[11px]"
+              disabled={loading || page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Trang trước
+            </Button>
+            <span>Trang {page} / {totalPages}</span>
+            <Button
+              variant="secondary"
+              className="px-3 py-2 text-[11px]"
+              disabled={loading || page >= totalPages}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            >
+              Trang sau
+            </Button>
+          </div>
+        </div>
       </Card>
 
       <p className="mt-4 flex items-start gap-2 text-[11px] leading-5 text-dt-muted"><CheckCircle2 className="mt-0.5 shrink-0 text-dt-green" size={14} />Khi gán kho, hệ thống đồng bộ tỉnh phụ trách theo tỉnh của kho. Tài khoản chưa được gán kho sẽ không nhận được đơn/chặng tại các API vận hành.</p>
