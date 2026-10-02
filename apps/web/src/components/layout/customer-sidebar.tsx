@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
 
 /**
@@ -26,8 +27,8 @@ const CUSTOMER_NAV: { label: string; href?: string }[] = [
 export function CustomerSidebar(): React.JSX.Element {
   const pathname = usePathname();
 
-  return (
-    <aside className="flex w-60 shrink-0 flex-col gap-2 bg-dt-side px-[18px] pb-5 pt-7">
+  const content = (
+    <>
       <p className="text-[21px] font-bold text-dt-yellow">DeliverTrust</p>
       <p className="text-[10px] text-dt-muted">Khách hàng</p>
       <div className="my-2 h-px bg-dt-border" />
@@ -66,6 +67,17 @@ export function CustomerSidebar(): React.JSX.Element {
       <div className="mt-auto border-t border-dt-border pt-4">
         <LogoutButton />
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="hidden w-60 shrink-0 flex-col gap-2 bg-dt-side px-[18px] pb-5 pt-7 lg:flex">
+        {content}
+      </aside>
+      <MobileNavDrawer brand={<p className="text-[18px] font-bold text-dt-yellow">DeliverTrust</p>}>
+        <div className="flex min-h-full flex-col gap-2 px-[18px] pb-5 pt-7">{content}</div>
+      </MobileNavDrawer>
+    </>
   );
 }

@@ -26,6 +26,13 @@ body {
   font-family: Inter, ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Con cua grid khong bi bang/noi dung rong day tran ngang tren man hinh nho. */
+@layer base {
+  .grid > * {
+    min-width: 0;
+  }
+}
+
 /* O nhap tren nen toi: bo nen vang tu dong dien cua trinh duyet. */
 input:-webkit-autofill,
 input:-webkit-autofill:focus {
