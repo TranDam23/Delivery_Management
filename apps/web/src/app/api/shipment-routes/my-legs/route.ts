@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       assigned_staff_id, assigned_at, responsibility_province, status, attempt_no, is_return,
       started_at, completed_at, note, updated_at,
       orders(
-        id, tracking_code, service_type, cod_amount, note,
+        id, tracking_code, service_type, cod_amount, total_fee, shipping_fee_payer, shipping_payment_method, shipping_payment_status, note,
         pickup_address:addresses!orders_pickup_address_id_fkey(recipient_name, phone, address_line, ward, district, province),
         delivery_address:addresses!orders_delivery_address_id_fkey(recipient_name, phone, address_line, ward, district, province)
       ),

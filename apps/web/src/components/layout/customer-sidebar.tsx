@@ -18,7 +18,7 @@ const CUSTOMER_NAV: { label: string; href?: string }[] = [
   { label: "Đơn tôi nhận", href: "/orders/received" },
   { label: "Sổ địa chỉ", href: "/contacts" },
   { label: "Theo dõi đơn hàng", href: "/orders/track" },
-  { label: "COD" },
+  { label: "COD", href: "/orders/cod" },
   { label: "Thông báo", href: "/notifications" },
   { label: "Hồ sơ", href: "/profile" },
 ];

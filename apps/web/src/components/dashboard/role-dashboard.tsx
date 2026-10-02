@@ -63,7 +63,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Nhân viên", icon: UserRound },
   { label: "Tài xế", icon: Truck },
   { label: "Blockchain", icon: ShieldCheck },
-  { label: "COD & Đối soát", icon: WalletCards },
+  { label: "COD & Đối soát", icon: WalletCards, href: "/dashboard/admin/cod" },
   { label: "Phân tích", icon: BarChart3 },
   { label: "Báo cáo", icon: FileCheck2 },
   { label: "Thông báo", icon: Bell, href: "/dashboard/admin/notifications" },
@@ -78,8 +78,7 @@ export const DISPATCHER_NAV: NavItem[] = [
   { label: "Giao nhận", icon: PackageCheck },
   { label: "Tài xế", icon: Truck },
   { label: "Theo dõi realtime", icon: Activity },
-  // Hang dac biet va doi soat COD thuoc cac bo phan nghiep vu chuyen trach;
-  // dieu phoi vien chi nhan canh bao de phoi hop khi phat sinh bat thuong.
+  { label: "COD & Đối soát", icon: WalletCards, href: "/dashboard/dispatcher/cod" },
   { label: "Hoàn hàng", icon: Route },
   { label: "Cảnh báo", icon: AlertTriangle },
   { label: "Thông báo", icon: Bell, href: "/dashboard/dispatcher/notifications" },

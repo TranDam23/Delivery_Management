@@ -24,23 +24,27 @@ import { selectNearestWarehouse } from "@/lib/shipment-routing";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
 import { fetchActiveCommuneWarehouses } from "@/lib/warehouse-queries";
 import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
+import { shippingFeePayerSchema, shippingPaymentMethodSchema } from "@/lib/shipping-payment";
+import { calculateShippingFee } from "@/lib/shipping-fee";
 
 const createOrderSchema = z.object({
   sender_id: z.string().uuid(),
   receiver_id: z.string().uuid(),
   pickup_address_id: z.string().uuid(),
   delivery_address_id: z.string().uuid(),
-  service_type: z.string().default("standard"),
-  cod_amount: z.number().nonnegative().default(0),
-  total_fee: z.number().nonnegative().default(0),
+  service_type: z.enum(["standard", "express", "same_day"]).default("standard"),
+  cod_amount: z.number().finite().nonnegative().max(999999999999.99).refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "COD tối đa hai chữ số thập phân").default(0),
+  // Both may be absent for an older browser tab during deployment. Never invent a payer.
+  shipping_fee_payer: shippingFeePayerSchema.optional(),
+  shipping_payment_method: shippingPaymentMethodSchema.optional(),
   note: z.string().optional(),
   items: z
     .array(
       z.object({
         item_name: z.string().min(1),
         item_type: z.string().optional(),
-        quantity: z.number().int().positive().default(1),
-        weight: z.number().optional(),
+        quantity: z.number().int().positive().max(10000).default(1),
+        weight: z.number().finite().positive().max(10000).optional(),
         length: z.number().optional(),
         width: z.number().optional(),
         height: z.number().optional(),
@@ -288,6 +292,13 @@ export async function POST(request: NextRequest) {
 
   const parsed = createOrderSchema.safeParse(await request.json());
   if (!parsed.success) return fail(parsed.error.message);
+  if ((parsed.data.shipping_fee_payer === undefined) !== (parsed.data.shipping_payment_method === undefined)) {
+    return fail("Cần chọn cả người trả và phương thức thanh toán phí vận chuyển.", 400);
+  }
+  if (parsed.data.shipping_payment_method !== undefined && parsed.data.shipping_payment_method !== "cash") {
+    return fail("VietQR và MoMo chưa có tài khoản nhận tiền/callback xác thực; hiện chỉ có thể chọn tiền mặt.", 503);
+  }
+  const shippingFee = calculateShippingFee(parsed.data.service_type, parsed.data.items);
 
   const supabase = getSupabaseServiceClient();
 
@@ -373,7 +384,10 @@ export async function POST(request: NextRequest) {
       delivery_warehouse_id: deliveryWarehouse.id,
       service_type: parsed.data.service_type,
       cod_amount: parsed.data.cod_amount,
-      total_fee: parsed.data.total_fee,
+      total_fee: shippingFee,
+      shipping_fee_payer: parsed.data.shipping_fee_payer ?? null,
+      shipping_payment_method: parsed.data.shipping_payment_method ?? null,
+      shipping_payment_status: "pending",
       note: parsed.data.note ?? null,
       status_id: createdStatus.id,
       created_by: auth.userId,
@@ -399,7 +413,7 @@ export async function POST(request: NextRequest) {
       deliveryAddressId: parsed.data.delivery_address_id,
       serviceType: parsed.data.service_type,
       codAmount: parsed.data.cod_amount,
-      totalFee: parsed.data.total_fee,
+      totalFee: shippingFee,
       items: parsed.data.items,
     },
   });

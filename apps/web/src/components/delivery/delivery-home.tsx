@@ -54,6 +54,9 @@ export function DeliveryHomePage(): React.JSX.Element {
   const nextOrder = next ? relationValue(next.orders) : null;
   const nextStop = next ? customerStop(next) : null;
   const nextCod = next && !next.is_return && next.leg_type === "LAST_MILE" ? Number(nextOrder?.cod_amount ?? 0) : 0;
+  const nextFeeDue = next && !next.is_return && nextOrder?.shipping_payment_method === "cash" && nextOrder.shipping_payment_status !== "paid"
+    && ((next.leg_type === "PICKUP" && nextOrder.shipping_fee_payer === "sender") || (next.leg_type === "LAST_MILE" && nextOrder.shipping_fee_payer === "receiver"))
+    ? Number(nextOrder.total_fee ?? 0) : 0;
   const nextDirections = directionsUrl(nextStop?.address ?? null);
   const nextPhone = nextStop?.address?.phone?.replace(/\s+/g, "");
 
@@ -96,6 +99,7 @@ export function DeliveryHomePage(): React.JSX.Element {
               <p className="text-dt-muted">{nextStop.role}: <span className="text-dt-text">{nextStop.address?.recipient_name ?? "—"}</span></p>
               <p className="leading-5">{addressLine(nextStop.address)}</p>
               {nextCod > 0 ? <p>Thu COD: <strong className="text-dt-yellow">{formatVnd(nextCod)}</strong></p> : null}
+              {nextFeeDue > 0 ? <p>Phí vận chuyển {nextOrder?.shipping_fee_payer === "sender" ? "người gửi" : "người nhận"} trả (chưa xác nhận thu): <strong className="text-dt-yellow">{formatVnd(nextFeeDue)}</strong></p> : null}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <Link href="/dashboard/delivery/routes" className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-dt bg-dt-yellow text-[14px] font-semibold text-dt-bg"><Route size={17} /> Mở chặng</Link>

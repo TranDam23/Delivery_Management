@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { data: order, error } = await supabase
     .from("orders")
     .select(
-      `id, tracking_code, qr_code, service_type, cod_amount, total_fee, note, cancel_reason,
+      `id, tracking_code, qr_code, service_type, cod_amount, total_fee, shipping_fee_payer, shipping_payment_method, shipping_payment_status, note, cancel_reason,
        created_at, updated_at,
        order_statuses(code, name, is_final),
        order_items(*),
@@ -40,6 +40,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   if (error) return fail(error.message, 500);
   if (!order) return fail("Order not found", 404);
+
+  const { data: codTransaction, error: codError } = Number(order.cod_amount) > 0
+    ? await supabase.from("cod_transactions").select("status, amount, collected_at, reconciled_at")
+      .eq("order_id", id).maybeSingle()
+    : { data: null, error: null };
+  if (codError) return fail(codError.message, 500);
 
   const { data: events } = await supabase
     .from("delivery_events")
@@ -69,5 +75,5 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     receiverConfirmation = { confirmedAt: delivery?.received_at ?? null };
   }
 
-  return ok({ order, events: events ?? [], receiverConfirmation, canConfirmReceipt });
+  return ok({ order, events: events ?? [], receiverConfirmation, canConfirmReceipt, codTransaction });
 }

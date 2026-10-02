@@ -53,6 +53,9 @@ export interface OrderListItem {
 }
 
 export interface OrderDetail extends OrderListItem {
+  shipping_fee_payer: "sender" | "receiver" | null;
+  shipping_payment_method: "cash" | "vietqr" | "momo" | null;
+  shipping_payment_status: "pending" | "paid";
   cancel_reason: string | null;
   updated_at: string;
   order_items: Array<{

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { SelectField, TextField } from "@/components/ui/field";
 import { guestPost } from "./guest-api";
+import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
+import { calculateShippingFee } from "@/lib/shipping-fee";
+import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
 
 type Address = { name: string; phone: string; addressLine: string; province: string; district: string; ward: string; email?: string };
 const EMPTY_ADDRESS: Address = { name: "", phone: "", addressLine: "", province: "", district: "", ward: "" };
@@ -28,6 +31,8 @@ export function GuestOrderForm(): React.JSX.Element {
   const [sender, setSender] = useState<Address>(EMPTY_ADDRESS);
   const [receiver, setReceiver] = useState<Address>({ ...EMPTY_ADDRESS, email: "" });
   const [serviceType, setServiceType] = useState("standard");
+  const [shippingFeePayer, setShippingFeePayer] = useState<ShippingFeePayer>("sender");
+  const [shippingPaymentMethod, setShippingPaymentMethod] = useState<ShippingPaymentMethod>("cash");
   const [codAmount, setCodAmount] = useState("0");
   const [name, setName] = useState("");
   const [type, setType] = useState("");
@@ -58,6 +63,7 @@ export function GuestOrderForm(): React.JSX.Element {
     try {
       const result = await guestPost<{ trackingCode: string; routeStatus: string }>("/api/guest/orders", {
         email, otp, sender, receiver, serviceType,
+        shippingFeePayer, shippingPaymentMethod,
         codAmount: Number(codAmount), note,
         item: { name, type, quantity: Number(quantity), weight: weight ? Number(weight) : null,
           declaredValue: declaredValue ? Number(declaredValue) : null, note: "" },
@@ -90,8 +96,9 @@ export function GuestOrderForm(): React.JSX.Element {
         <TextField label="COD cần thu hộ (đ)" type="number" min="0" required value={codAmount} onChange={(event) => setCodAmount(event.target.value)} />
       </div>
       <SelectField label="Dịch vụ" required value={serviceType} onChange={(event) => setServiceType(event.target.value)}>
-        <option value="standard">Tiêu chuẩn — 30.000đ</option><option value="express">Hỏa tốc — 50.000đ</option><option value="same_day">Trong ngày — 70.000đ</option>
+        <option value="standard">Tiêu chuẩn — từ 30.000đ</option><option value="express">Hỏa tốc — từ 50.000đ</option><option value="same_day">Trong ngày — từ 70.000đ</option>
       </SelectField>
+      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={calculateShippingFee(serviceType as "standard" | "express" | "same_day", [{ weight: Number(weight) || undefined, quantity: Number(quantity) || 1 }])} />
       <TextField label="Ghi chú giao hàng" value={note} onChange={(event) => setNote(event.target.value)} />
     </section>
     <section className="space-y-4 rounded-dt border border-dt-border bg-dt-panel p-5">

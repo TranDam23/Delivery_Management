@@ -311,7 +311,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .select("*")
       .single();
     if (codError && codError.code !== "23505") return fail(codError.message, 500);
-    codTransaction = codRow;
+    if (codError?.code === "23505") {
+      const { data: existing, error: existingError } = await supabase.from("cod_transactions")
+        .select("id, amount, status, collected_by, collected_at")
+        .eq("order_id", delivery.order_id).maybeSingle();
+      if (existingError) return fail(existingError.message, 500);
+      if (!existing || Number(existing.amount) !== codAmount || existing.collected_by !== auth.userId || !existing.collected_at || existing.status !== CodTransactionStatus.COLLECTED) {
+        return fail("COD hiện có không khớp với đơn hàng. Cần kiểm tra thủ công trước khi tiếp tục.", 409);
+      }
+      codTransaction = existing;
+    } else {
+      codTransaction = codRow;
+    }
   }
 
   const chainEventType = leg.is_return && isDelivered ? BlockchainEventType.RETURNED : input.status_code;

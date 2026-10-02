@@ -20,6 +20,10 @@ export interface StaffOrder {
   tracking_code: string;
   service_type: string;
   cod_amount: number;
+  total_fee: number;
+  shipping_fee_payer: "sender" | "receiver" | null;
+  shipping_payment_method: "cash" | "vietqr" | "momo" | null;
+  shipping_payment_status: "pending" | "paid";
   note: string | null;
   pickup_address: StaffAddress | StaffAddress[] | null;
   delivery_address: StaffAddress | StaffAddress[] | null;
