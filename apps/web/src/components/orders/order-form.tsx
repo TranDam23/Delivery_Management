@@ -22,8 +22,9 @@ import { AddressMapPicker, type AddressMapValue } from "@/components/locations/a
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
 import { apiFetch } from "@/lib/api-client";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
+import { usePaymentAvailability } from "@/lib/use-payment-availability";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
-import { calculateShippingFee } from "@/lib/shipping-fee";
+import { useShippingQuote } from "@/lib/use-shipping-quote";
 
 interface FormState {
   senderId: string;
@@ -33,6 +34,9 @@ interface FormState {
   itemType: string;
   quantity: string;
   weight: string;
+  length: string;
+  width: string;
+  height: string;
   declaredValue: string;
   codAmount: string;
   note: string;
@@ -80,15 +84,18 @@ const INITIAL_FORM: FormState = {
   itemType: "",
   quantity: "1",
   weight: "",
+  length: "",
+  width: "",
+  height: "",
   declaredValue: "",
   codAmount: "0",
   note: "",
 };
 
 const SERVICE_OPTIONS = [
-  { value: "standard", label: "Tiêu chuẩn — 30.000đ" },
-  { value: "express", label: "Hỏa tốc — 50.000đ" },
-  { value: "same_day", label: "Trong ngày — 70.000đ" },
+  { value: "standard", label: "Tiêu chuẩn" },
+  { value: "express", label: "Hỏa tốc" },
+  { value: "same_day", label: "Trong ngày (chỉ nội tỉnh)" },
 ];
 
 function numericValue(value: string): number {
@@ -270,6 +277,7 @@ export function NewOrderPage(): React.JSX.Element {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [shippingFeePayer, setShippingFeePayer] = useState<ShippingFeePayer>("sender");
   const [shippingPaymentMethod, setShippingPaymentMethod] = useState<ShippingPaymentMethod>("cash");
+  const paymentAvailability = usePaymentAvailability();
   const [senderSource, setSenderSource] = useState<ContactSource>("addressBook");
   const [receiverSource, setReceiverSource] = useState<ContactSource>("addressBook");
   const [manualSender, setManualSender] = useState<ManualContactForm>(EMPTY_MANUAL_CONTACT);
@@ -316,7 +324,15 @@ export function NewOrderPage(): React.JSX.Element {
   const selectedSender = contacts.find((contact) => contact.id === form.senderId);
   const selectedReceiver = contacts.find((contact) => contact.id === form.receiverId);
   const weight = numericValue(form.weight);
-  const estimatedFee = calculateShippingFee(form.serviceType as "standard" | "express" | "same_day", [{ weight, quantity: numericValue(form.quantity) || 1 }]);
+  const pickupProvince = senderSource === "manual" ? manualSender.province : senderAddress?.province ?? selectedSender?.default_address?.province;
+  const deliveryProvince = receiverSource === "manual" ? manualReceiver.province : receiverAddress?.province ?? selectedReceiver?.default_address?.province;
+  const { quote } = useShippingQuote({
+    service: form.serviceType as "standard" | "express" | "same_day",
+    pickupProvince,
+    deliveryProvince,
+    items: [{ weight, length: numericValue(form.length) || undefined, width: numericValue(form.width) || undefined, height: numericValue(form.height) || undefined, quantity: numericValue(form.quantity) || 1 }],
+  });
+  const estimatedFee = quote?.fee ?? null;
 
   function update(field: keyof FormState, value: string): void {
     setForm((current) => ({ ...current, [field]: value }));
@@ -418,6 +434,9 @@ export function NewOrderPage(): React.JSX.Element {
             item_type: form.itemType.trim() || undefined,
             quantity,
             weight: form.weight.trim() ? weight : undefined,
+            length: numericValue(form.length) > 0 ? numericValue(form.length) : undefined,
+            width: numericValue(form.width) > 0 ? numericValue(form.width) : undefined,
+            height: numericValue(form.height) > 0 ? numericValue(form.height) : undefined,
             declared_value: form.declaredValue.trim() ? declaredValue : undefined,
           }],
         }),
@@ -581,6 +600,11 @@ export function NewOrderPage(): React.JSX.Element {
               <TextField label="Khối lượng (kg)" type="number" min="0" step="0.01" value={form.weight} placeholder="Không bắt buộc" onChange={(event) => update("weight", event.target.value)} />
               <TextField label="Giá trị khai báo" type="number" min="0" step="1000" value={form.declaredValue} placeholder="Không bắt buộc" onChange={(event) => update("declaredValue", event.target.value)} />
             </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <TextField label="Chiều dài (cm)" type="number" min="0" step="0.1" value={form.length} placeholder="Không bắt buộc" onChange={(event) => update("length", event.target.value)} />
+              <TextField label="Chiều rộng (cm)" type="number" min="0" step="0.1" value={form.width} placeholder="Không bắt buộc" onChange={(event) => update("width", event.target.value)} />
+              <TextField label="Chiều cao (cm)" type="number" min="0" step="0.1" value={form.height} placeholder="Không bắt buộc" hint="Nhập đủ 3 chiều: kiện cồng kềnh được tính cước theo khối lượng quy đổi (dài×rộng×cao/6000)." onChange={(event) => update("height", event.target.value)} />
+            </div>
           </Card>
 
           <Card>
@@ -599,7 +623,7 @@ export function NewOrderPage(): React.JSX.Element {
               {SERVICE_OPTIONS.map((option) => <option key={option.value} value={option.value} className="bg-dt-panel2">{option.label}</option>)}
             </SelectField>
             <TextField label="COD cần thu hộ" type="number" min="0" step="1000" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
-            <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} />
+            <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} feeNote={quote && !quote.available ? quote.message : null} availability={paymentAvailability} />
           </Card>
 
           <Card className="border-dt-green/25 bg-dt-green/5">

@@ -11,6 +11,8 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/h
 /** Mục đích ảnh quyết định thư mục lưu và vai trò được phép tải. */
 const PURPOSES: Record<string, { folder: string; roles: RoleCode[] }> = {
   delivery_proof: { folder: "delivery-proofs", roles: [RoleCode.DELIVERY_STAFF, RoleCode.ADMIN] },
+  /** Ảnh mã nhận tiền MoMo do admin tải lên. */
+  payment_qr: { folder: "payment-qr", roles: [RoleCode.ADMIN] },
 };
 
 /**

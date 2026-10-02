@@ -56,6 +56,14 @@ export interface OrderDetail extends OrderListItem {
   shipping_fee_payer: "sender" | "receiver" | null;
   shipping_payment_method: "cash" | "vietqr" | "momo" | null;
   shipping_payment_status: "pending" | "paid";
+  shipping_payee_kind?: "bank" | "momo" | null;
+  shipping_payee_bank_bin?: string | null;
+  shipping_payee_bank_name?: string | null;
+  shipping_payee_account_number?: string | null;
+  shipping_payee_account_name?: string | null;
+  shipping_payee_qr_url?: string | null;
+  shipping_transferred_at?: string | null;
+  shipping_paid_at?: string | null;
   cancel_reason: string | null;
   updated_at: string;
   order_items: Array<{

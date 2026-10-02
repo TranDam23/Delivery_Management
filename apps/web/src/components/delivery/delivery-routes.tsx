@@ -33,6 +33,7 @@ import {
 } from "./delivery-legs";
 import { DeliveryMobileShell } from "./mobile-shell";
 import { ProofPhotoInput } from "./proof-photo-input";
+import { QrCameraScanner } from "./qr-camera-scanner";
 
 type DriverEventCode =
   | typeof BlockchainEventType.PICKED_UP
@@ -90,6 +91,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
   const [tab, setTab] = useState<LegBucket>("todo");
   const [search, setSearch] = useState("");
   const [scanMode, setScanMode] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -180,6 +182,22 @@ export function DeliveryRoutesPage(): React.JSX.Element {
       if (sheet) setSheetError(message);
       else setError(message);
       return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function confirmFeeCollected(leg: AssignedLeg, orderId: string, amount: number): Promise<void> {
+    if (!window.confirm(`Xác nhận đã thu đủ ${formatVnd(amount)} phí vận chuyển bằng tiền mặt? Khoản này phải nộp về bưu cục cùng COD.`)) return;
+    setBusyId(leg.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/shipping-payment`, { method: "POST", body: JSON.stringify({ action: "confirm" }) });
+      setNotice("Đã ghi nhận thu phí vận chuyển. Nhớ nộp tiền về bưu cục.");
+      await loadLegs();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không xác nhận được khoản thu phí");
     } finally {
       setBusyId(null);
     }
@@ -294,6 +312,9 @@ export function DeliveryRoutesPage(): React.JSX.Element {
           {!leg.is_return && order?.shipping_payment_method === "cash" && order.shipping_payment_status !== "paid"
             && ((leg.leg_type === ShipmentLegType.PICKUP && order.shipping_fee_payer === "sender") || (leg.leg_type === ShipmentLegType.LAST_MILE && order.shipping_fee_payer === "receiver"))
             ? <p className="mt-2 text-[12px] text-dt-muted">Phí vận chuyển riêng ({order.shipping_fee_payer === "sender" ? "người gửi" : "người nhận"} trả): {formatVnd(Number(order.total_fee))} · chưa xác nhận thu</p> : null}
+          {!leg.is_return && order?.shipping_payment_method === "cash" && order.shipping_payment_status !== "paid" && (leg.status === ShipmentLegStatusCode.IN_PROGRESS || leg.status === ShipmentLegStatusCode.ASSIGNED)
+            && ((leg.leg_type === ShipmentLegType.PICKUP && order.shipping_fee_payer === "sender") || (leg.leg_type === ShipmentLegType.LAST_MILE && order.shipping_fee_payer === "receiver"))
+            ? <button type="button" disabled={busyId === leg.id} onClick={() => void confirmFeeCollected(leg, order.id, Number(order.total_fee))} className="mt-2 rounded-md border border-dt-yellow px-3 py-2 text-[12px] text-dt-yellow disabled:opacity-50">Xác nhận đã thu phí {formatVnd(Number(order.total_fee))}</button> : null}
 
           {inTodo || expanded ? (
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -415,7 +436,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
       )}
     >
       <label className="flex min-h-12 items-center gap-2 rounded-dt border border-dt-border bg-dt-panel px-3 focus-within:border-dt-yellow">
-        <ScanLine size={18} className="shrink-0 text-dt-yellow" />
+        <button type="button" onClick={() => setCameraOpen(true)} aria-label="Mở camera quét QR" className="shrink-0 rounded-md p-1 text-dt-yellow hover:bg-dt-panel2"><ScanLine size={20} /></button>
         <input
           ref={searchRef}
           value={search}
@@ -463,6 +484,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
       </div>
 
       {renderSheet()}
+      {cameraOpen ? <QrCameraScanner onClose={() => setCameraOpen(false)} onResult={(code) => { setCameraOpen(false); setSearch(code.toUpperCase()); setScanMode(true); }} /> : null}
     </DeliveryMobileShell>
   );
 }

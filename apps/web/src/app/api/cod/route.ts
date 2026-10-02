@@ -1,59 +1,20 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { CodTransactionStatus, OrderStatusCode, RoleCode, normalizePhone } from "@delivery/shared";
+import { CodTransactionStatus, OrderStatusCode, RoleCode } from "@delivery/shared";
+import { writeAuditLog } from "@/lib/audit";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkOrderViewAccess } from "@/lib/order-access";
-import { getUserOperationalScope } from "@/lib/dispatcher-scope";
+import { scopedOrderIds } from "@/lib/order-scope";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { CodListItem, CodState } from "@/lib/cod";
 
-const actionSchema = z.object({ orderId: z.string().uuid() });
-
-async function scopedOrderIds(auth: NonNullable<ReturnType<typeof getAuthFromRequest>>) {
-  const db = getSupabaseServiceClient();
-  if (auth.roleCode === RoleCode.ADMIN) return { ids: null as string[] | null, error: null as string | null };
-  if (auth.roleCode === RoleCode.DISPATCHER) {
-    const scope = await getUserOperationalScope(auth);
-    if (scope.error) return { ids: [], error: scope.error };
-    if (!scope.warehouseId) return { ids: [], error: "Tài khoản chưa được gán kho phụ trách" };
-    let warehouseIds = [scope.warehouseId];
-    if (scope.warehouseLevel === "PROVINCE" && scope.province) {
-      const { data, error } = await db.from("warehouses").select("id").eq("province", scope.province);
-      if (error) return { ids: [], error: error.message };
-      warehouseIds = (data ?? []).map((row) => row.id);
-    }
-    if (!warehouseIds.length) return { ids: [], error: null };
-    const { data, error } = await db.from("orders").select("id")
-      .or(`pickup_warehouse_id.in.(${warehouseIds.join(",")}),delivery_warehouse_id.in.(${warehouseIds.join(",")})`);
-    return { ids: (data ?? []).map((row) => row.id), error: error?.message ?? null };
-  }
-  if (auth.roleCode === RoleCode.DELIVERY_STAFF) {
-    const { data, error } = await db.from("deliveries").select("order_id").eq("delivery_staff_id", auth.userId);
-    return { ids: Array.from(new Set((data ?? []).map((row) => row.order_id))), error: error?.message ?? null };
-  }
-  if (auth.roleCode === RoleCode.CUSTOMER) {
-    const { data: user, error: userError } = await db.from("users").select("phone").eq("id", auth.userId).maybeSingle();
-    if (userError) return { ids: [], error: userError.message };
-    const phone = normalizePhone(user?.phone ?? "");
-    const { data: contacts, error: contactError } = await db.from("contacts").select("id, user_id, phone")
-      .or(phone ? `user_id.eq.${auth.userId},phone.eq.${phone}` : `user_id.eq.${auth.userId}`);
-    if (contactError) return { ids: [], error: contactError.message };
-    const senderIds = (contacts ?? []).filter((contact) => contact.user_id === auth.userId || (phone && normalizePhone(contact.phone) === phone)).map((contact) => contact.id);
-    const [created, sent] = await Promise.all([
-      db.from("orders").select("id").eq("created_by", auth.userId),
-      senderIds.length ? db.from("orders").select("id").in("sender_id", senderIds) : Promise.resolve({ data: [], error: null }),
-    ]);
-    if (created.error || sent.error) return { ids: [], error: created.error?.message ?? sent.error?.message ?? "Không tải được đơn" };
-    const ids = Array.from(new Set([...(created.data ?? []), ...(sent.data ?? [])].map((row) => row.id)));
-    if (!ids.length) return { ids, error: null };
-    const { data: guestOrders, error } = await db.from("guest_orders").select("order_id").in("order_id", ids);
-    if (error) return { ids: [], error: error.message };
-    const guestIds = new Set((guestOrders ?? []).map((row) => row.order_id));
-    return { ids: ids.filter((id) => !guestIds.has(id)), error: null };
-  }
-  return { ids: [], error: "Forbidden" };
-}
+const actionSchema = z.object({
+  orderId: z.string().uuid(),
+  /** reconcile: đối chiếu tiền đã thu; remit: đã chuyển trả tiền COD cho người gửi (sau đối soát). */
+  action: z.enum(["reconcile", "remit"]).default("reconcile"),
+  note: z.string().trim().max(300).optional(),
+});
 
 export async function GET(request: NextRequest) {
   const auth = getAuthFromRequest(request);
@@ -72,7 +33,7 @@ export async function GET(request: NextRequest) {
   if (error) return fail(error.message, 500);
   const ids = (orders ?? []).map((row) => row.id);
   const { data: transactions, error: transactionError } = ids.length
-    ? await db.from("cod_transactions").select("order_id, amount, status, collected_at, reconciled_at, collected_by, reconciled_by").in("order_id", ids)
+    ? await db.from("cod_transactions").select("order_id, amount, status, collected_at, reconciled_at, collected_by, reconciled_by, remitted_at, handed_over_at").in("order_id", ids)
     : { data: [], error: null };
   if (transactionError) return fail(transactionError.message, 500);
   const byOrder = new Map((transactions ?? []).map((row) => [row.order_id, row]));
@@ -89,6 +50,8 @@ export async function GET(request: NextRequest) {
       reconciledAt: transaction?.reconciled_at ?? null,
       collectedBy: transaction?.collected_by ?? null,
       reconciledBy: transaction?.reconciled_by ?? null,
+      remittedAt: transaction?.remitted_at ?? null,
+      handedOverAt: transaction?.handed_over_at ?? null,
     };
   });
   return ok({ items, total: count ?? 0, page, pageSize });
@@ -108,14 +71,25 @@ export async function POST(request: NextRequest) {
     .select("id, cod_amount, order_statuses(code)").eq("id", parsed.data.orderId).maybeSingle();
   if (orderError) return fail(orderError.message, 500);
   if (!order || Number(order.cod_amount) <= 0) return fail("Đơn không có COD", 409);
+  if (parsed.data.action === "remit") {
+    const { data: remitted, error: remitError } = await db.from("cod_transactions")
+      .update({ remitted_at: new Date().toISOString(), remitted_by: auth.userId, remit_note: parsed.data.note ?? null })
+      .eq("order_id", parsed.data.orderId).eq("status", CodTransactionStatus.RECONCILED).is("remitted_at", null)
+      .select("id, amount").maybeSingle();
+    if (remitError) return fail(remitError.message, 500);
+    if (!remitted) return fail("Chỉ chuyển trả được khoản COD đã đối soát và chưa chuyển trả", 409);
+    await writeAuditLog({ userId: auth.userId, action: "COD_REMITTED", entityType: "order", entityId: parsed.data.orderId, newData: { amount: Number(remitted.amount), note: parsed.data.note ?? null }, request });
+    return ok({ orderId: parsed.data.orderId, remitted: true });
+  }
   if (order.order_statuses?.code !== OrderStatusCode.DELIVERED) return fail("Chỉ đối soát đơn đã giao thành công", 409);
   const { data: transaction, error: transactionError } = await db.from("cod_transactions")
-    .select("id, amount, status, collected_by, collected_at")
+    .select("id, amount, status, collected_by, collected_at, handed_over_at")
     .eq("order_id", parsed.data.orderId).maybeSingle();
   if (transactionError) return fail(transactionError.message, 500);
   if (!transaction || transaction.status !== CodTransactionStatus.COLLECTED || !transaction.collected_by || !transaction.collected_at) {
     return fail("Đơn chưa được ghi nhận thu COD hoặc đã đối soát", 409);
   }
+  if (!transaction.handed_over_at) return fail("Shipper chưa nộp tiền COD về bưu cục hoặc bưu cục chưa xác nhận phiếu nộp. Chưa thể đối soát.", 409);
   if (Number(transaction.amount) !== Number(order.cod_amount)) return fail("Tiền đã thu không khớp tiền COD của đơn", 409);
   const { data: deliveredStatus } = await db.from("order_statuses").select("id").eq("code", OrderStatusCode.DELIVERED).maybeSingle();
   if (!deliveredStatus) return fail("Thiếu trạng thái giao thành công", 500);
@@ -129,5 +103,6 @@ export async function POST(request: NextRequest) {
     .select("id").maybeSingle();
   if (updateError) return fail(updateError.message, 500);
   if (!reconciled) return fail("COD đã được đối soát bởi người khác. Hãy làm mới danh sách.", 409);
+  await writeAuditLog({ userId: auth.userId, action: "COD_RECONCILED", entityType: "order", entityId: parsed.data.orderId, oldData: { status: CodTransactionStatus.COLLECTED }, newData: { status: CodTransactionStatus.RECONCILED, amount: Number(transaction.amount) }, request });
   return ok({ orderId: parsed.data.orderId, status: CodTransactionStatus.RECONCILED });
 }

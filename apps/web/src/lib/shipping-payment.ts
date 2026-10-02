@@ -15,3 +15,8 @@ export const SHIPPING_PAYMENT_METHOD_LABEL: Record<ShippingPaymentMethod, string
   vietqr: "VietQR",
   momo: "MoMo",
 };
+
+/** Phương thức cần tài khoản nhận tiền do admin cấu hình (tiền mặt thì không). */
+export function isQrPaymentMethod(method: ShippingPaymentMethod | null | undefined): method is "vietqr" | "momo" {
+  return method === "vietqr" || method === "momo";
+}

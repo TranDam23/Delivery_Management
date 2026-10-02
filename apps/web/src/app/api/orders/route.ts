@@ -24,8 +24,9 @@ import { selectNearestWarehouse } from "@/lib/shipment-routing";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
 import { fetchActiveCommuneWarehouses } from "@/lib/warehouse-queries";
 import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
-import { shippingFeePayerSchema, shippingPaymentMethodSchema } from "@/lib/shipping-payment";
-import { calculateShippingFee } from "@/lib/shipping-fee";
+import { isQrPaymentMethod, shippingFeePayerSchema, shippingPaymentMethodSchema } from "@/lib/shipping-payment";
+import { calculateShippingFee, isServiceAvailable } from "@/lib/shipping-fee";
+import { zoneForProvinces } from "@/lib/shipping-zone";
 
 const createOrderSchema = z.object({
   sender_id: z.string().uuid(),
@@ -45,9 +46,9 @@ const createOrderSchema = z.object({
         item_type: z.string().optional(),
         quantity: z.number().int().positive().max(10000).default(1),
         weight: z.number().finite().positive().max(10000).optional(),
-        length: z.number().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
+        length: z.number().finite().positive().max(1000).optional(),
+        width: z.number().finite().positive().max(1000).optional(),
+        height: z.number().finite().positive().max(1000).optional(),
         declared_value: z.number().optional(),
         note: z.string().optional(),
       }),
@@ -277,6 +278,8 @@ export async function GET(request: NextRequest) {
   if (statusCode) {
     query = query.eq("order_statuses.code", statusCode);
   }
+  const trackingSearch = searchParams.get("q")?.trim().replace(/[^A-Za-z0-9-]/g, "");
+  if (trackingSearch) query = query.ilike("tracking_code", `%${trackingSearch}%`);
 
   const { data, error, count } = await query;
   if (error) return fail(error.message, 500);
@@ -295,10 +298,13 @@ export async function POST(request: NextRequest) {
   if ((parsed.data.shipping_fee_payer === undefined) !== (parsed.data.shipping_payment_method === undefined)) {
     return fail("Cần chọn cả người trả và phương thức thanh toán phí vận chuyển.", 400);
   }
-  if (parsed.data.shipping_payment_method !== undefined && parsed.data.shipping_payment_method !== "cash") {
-    return fail("VietQR và MoMo chưa có tài khoản nhận tiền/callback xác thực; hiện chỉ có thể chọn tiền mặt.", 503);
+  if (isQrPaymentMethod(parsed.data.shipping_payment_method)) {
+    const { data: activeAccount, error: activeAccountError } = await getSupabaseServiceClient()
+      .from("payment_accounts").select("id")
+      .eq("kind", parsed.data.shipping_payment_method === "vietqr" ? "bank" : "momo").eq("is_active", true).maybeSingle();
+    if (activeAccountError) return fail(activeAccountError.message, 500);
+    if (!activeAccount) return fail("Chưa cấu hình tài khoản nhận tiền cho phương thức này. Vui lòng chọn tiền mặt hoặc liên hệ quản trị viên.", 409);
   }
-  const shippingFee = calculateShippingFee(parsed.data.service_type, parsed.data.items);
 
   const supabase = getSupabaseServiceClient();
 
@@ -344,6 +350,18 @@ export async function POST(request: NextRequest) {
   if (!deliveryAddress.ward?.trim() || !deliveryAddress.province?.trim()) {
     return fail("Địa chỉ giao hàng phải có xã/phường và tỉnh/thành phố", 400);
   }
+
+  // Cước phụ thuộc phạm vi tuyến (nội tỉnh/nội vùng/liên vùng), luôn tính lại ở server.
+  let routeZoneValue;
+  try {
+    routeZoneValue = await zoneForProvinces(pickupAddress.province, deliveryAddress.province);
+  } catch {
+    return fail("Chưa tính được phạm vi tuyến lúc này. Vui lòng thử lại.", 503);
+  }
+  if (!isServiceAvailable(parsed.data.service_type, routeZoneValue)) {
+    return fail("Dịch vụ giao trong ngày chỉ áp dụng nội tỉnh. Hãy chọn dịch vụ khác.", 400);
+  }
+  const shippingFee = calculateShippingFee(parsed.data.service_type, parsed.data.items, routeZoneValue);
 
   // Gán kho con ngay lúc tạo đơn để điều phối viên nhận được đơn trong hàng
   // chờ của kho lấy hàng. Hàm chọn kho ưu tiên cùng xã/phường + quận/huyện,
