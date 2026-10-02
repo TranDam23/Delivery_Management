@@ -31,6 +31,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { CustomerHome } from "@/components/dashboard/customer-home";
 import { ROLE_LABEL } from "@/lib/role-routing";
+import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
 
 interface RoleDashboardProps {
@@ -160,8 +161,8 @@ export function DesktopSidebar({
   roleCode: RoleCodeType;
   activeLabel?: string;
 }): React.JSX.Element {
-  return (
-    <aside className="hidden min-h-screen w-[246px] shrink-0 flex-col border-r border-dt-border bg-dt-side lg:flex">
+  const content = (
+    <>
       <div className="px-5 pb-5 pt-6">
         <Brand />
       </div>
@@ -204,7 +205,16 @@ export function DesktopSidebar({
         </div>
         <LogoutButton />
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="hidden min-h-screen w-[246px] shrink-0 flex-col border-r border-dt-border bg-dt-side lg:flex">
+        {content}
+      </aside>
+      <MobileNavDrawer brand={<Brand />}>{content}</MobileNavDrawer>
+    </>
   );
 }
 
@@ -225,7 +235,7 @@ export function RolePageShell({
       : WAREHOUSE_STAFF_NAV;
 
   return (
-    <div className="flex min-h-screen bg-dt-bg text-dt-text">
+    <div className="flex min-h-screen flex-col bg-dt-bg text-dt-text lg:flex-row">
       <DesktopSidebar navItems={navItems} roleCode={roleCode} activeLabel={activeLabel} />
       <main className="min-w-0 flex-1">{children}</main>
     </div>
@@ -242,7 +252,7 @@ function DesktopHome({
   children,
 }: RoleDashboardProps & { navItems: NavItem[]; metrics: Metric[]; children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className="flex min-h-screen bg-dt-bg text-dt-text">
+    <div className="flex min-h-screen flex-col bg-dt-bg text-dt-text lg:flex-row">
       <DesktopSidebar navItems={navItems} roleCode={roleCode} />
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 md:py-8">

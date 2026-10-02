@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const navigation = [
   { href: "/", label: "Trang chủ" },
@@ -21,12 +22,14 @@ function isPublicPath(pathname: string): boolean {
 
 export function PublicNavigation(): React.JSX.Element | null {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [pathname]);
   if (!isPublicPath(pathname)) return null;
 
   const links = navigation.map(({ href, label }) => {
     const active = href === pathname || (href === "/tra-cuu" && pathname.startsWith("/tra-cuu/"));
     return <Link key={href} href={href} aria-current={active ? "page" : undefined}
-      className={`shrink-0 rounded px-2 py-2 transition hover:text-dt-text ${active ? "text-dt-yellow" : "text-dt-muted"}`}>
+      className={`shrink-0 rounded px-2 py-2 transition max-lg:block max-lg:px-3 max-lg:py-3 max-lg:text-[13px] hover:text-dt-text ${active ? "text-dt-yellow" : "text-dt-muted"}`}>
       {label}
     </Link>;
   });
@@ -43,14 +46,20 @@ export function PublicNavigation(): React.JSX.Element | null {
       <nav className="hidden items-center gap-1 text-[11px] lg:flex" aria-label="Menu khách vãng lai">
         {links}
       </nav>
-      <Link href={pathname === "/login" ? "/" : "/login"}
-        className="inline-flex shrink-0 items-center gap-2 rounded-md bg-dt-yellow px-3 py-2.5 text-[11px] font-semibold text-dt-bg transition hover:brightness-110 md:px-4">
-        {pathname === "/login" ? "Trang chủ" : "Đăng nhập"} <ArrowRight size={14} strokeWidth={2} />
-      </Link>
+      <div className="flex items-center gap-2">
+        <Link href={pathname === "/login" ? "/" : "/login"}
+          className="inline-flex shrink-0 items-center gap-2 rounded-md bg-dt-yellow px-3 py-2.5 text-[11px] font-semibold text-dt-bg transition hover:brightness-110 md:px-4">
+          {pathname === "/login" ? "Trang chủ" : "Đăng nhập"} <ArrowRight size={14} strokeWidth={2} />
+        </Link>
+        <button type="button" onClick={() => setOpen((value) => !value)} aria-label={open ? "Đóng menu" : "Mở menu"} aria-expanded={open}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dt-border text-dt-text hover:bg-dt-panel2 lg:hidden">
+          {open ? <X size={18} /> : <Menu size={18} />}
+        </button>
+      </div>
     </div>
-    <nav className="mx-auto flex max-w-[1240px] gap-1 overflow-x-auto px-3 pb-2 text-[11px] whitespace-nowrap md:px-6 lg:hidden"
+    {open ? <nav className="mx-auto flex max-h-[calc(100dvh-64px)] max-w-[1240px] flex-col overflow-y-auto border-t border-dt-border px-3 py-2 text-[13px] lg:hidden"
       aria-label="Menu khách vãng lai trên màn hình nhỏ">
       {links}
-    </nav>
+    </nav> : null}
   </header>;
 }

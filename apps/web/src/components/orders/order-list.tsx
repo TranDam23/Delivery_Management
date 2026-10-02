@@ -147,7 +147,7 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
             label="Lọc trạng thái"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            wrapperClassName="w-[220px]"
+            wrapperClassName="w-full sm:w-[220px]"
           >
             <option value="" className="bg-dt-panel2">Tất cả trạng thái</option>
             {STATUS_OPTIONS.map((option) => (
