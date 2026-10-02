@@ -243,38 +243,149 @@ export type Database = {
           },
         ]
       }
+      cash_handover_items: {
+        Row: {
+          amount: number
+          handover_id: string
+          id: string
+          kind: string
+          order_id: string
+        }
+        Insert: {
+          amount: number
+          handover_id: string
+          id?: string
+          kind: string
+          order_id: string
+        }
+        Update: {
+          amount?: number
+          handover_id?: string
+          id?: string
+          kind?: string
+          order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_handover_items_handover_id_fkey"
+            columns: ["handover_id"]
+            isOneToOne: false
+            referencedRelation: "cash_handovers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handover_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_handovers: {
+        Row: {
+          cod_amount: number
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          fee_amount: number
+          id: string
+          note: string | null
+          shipper_id: string
+          status: string
+          submitted_at: string
+          warehouse_id: string
+        }
+        Insert: {
+          cod_amount?: number
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          fee_amount?: number
+          id?: string
+          note?: string | null
+          shipper_id: string
+          status?: string
+          submitted_at?: string
+          warehouse_id: string
+        }
+        Update: {
+          cod_amount?: number
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          fee_amount?: number
+          id?: string
+          note?: string | null
+          shipper_id?: string
+          status?: string
+          submitted_at?: string
+          warehouse_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_handovers_shipper_id_fkey"
+            columns: ["shipper_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_warehouse_id_fkey"
+            columns: ["warehouse_id"]
+            isOneToOne: false
+            referencedRelation: "warehouses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cod_transactions: {
         Row: {
           amount: number
           collected_at: string | null
           collected_by: string | null
+          handed_over_at: string | null
+          handover_id: string | null
           id: string
           note: string | null
           order_id: string
           reconciled_at: string | null
           reconciled_by: string | null
+          remit_note: string | null
+          remitted_at: string | null
+          remitted_by: string | null
           status: Database["public"]["Enums"]["cod_transaction_status"]
         }
         Insert: {
           amount: number
           collected_at?: string | null
           collected_by?: string | null
+          handed_over_at?: string | null
+          handover_id?: string | null
           id?: string
           note?: string | null
           order_id: string
           reconciled_at?: string | null
           reconciled_by?: string | null
+          remit_note?: string | null
+          remitted_at?: string | null
+          remitted_by?: string | null
           status?: Database["public"]["Enums"]["cod_transaction_status"]
         }
         Update: {
           amount?: number
           collected_at?: string | null
           collected_by?: string | null
+          handed_over_at?: string | null
+          handover_id?: string | null
           id?: string
           note?: string | null
           order_id?: string
           reconciled_at?: string | null
           reconciled_by?: string | null
+          remit_note?: string | null
+          remitted_at?: string | null
+          remitted_by?: string | null
           status?: Database["public"]["Enums"]["cod_transaction_status"]
         }
         Relationships: [
@@ -833,8 +944,18 @@ export type Database = {
           sender_id: string
           service_type: string
           shipping_fee_payer: string | null
+          shipping_handover_id: string | null
           shipping_payment_method: string | null
           shipping_payment_status: string
+          shipping_paid_at: string | null
+          shipping_paid_by: string | null
+          shipping_payee_account_name: string | null
+          shipping_payee_account_number: string | null
+          shipping_payee_bank_bin: string | null
+          shipping_payee_bank_name: string | null
+          shipping_payee_kind: string | null
+          shipping_payee_qr_url: string | null
+          shipping_transferred_at: string | null
           status_id: string
           total_fee: number
           tracking_code: string
@@ -857,8 +978,18 @@ export type Database = {
           sender_id: string
           service_type?: string
           shipping_fee_payer?: string | null
+          shipping_handover_id?: string | null
           shipping_payment_method?: string | null
           shipping_payment_status?: string
+          shipping_paid_at?: string | null
+          shipping_paid_by?: string | null
+          shipping_payee_account_name?: string | null
+          shipping_payee_account_number?: string | null
+          shipping_payee_bank_bin?: string | null
+          shipping_payee_bank_name?: string | null
+          shipping_payee_kind?: string | null
+          shipping_payee_qr_url?: string | null
+          shipping_transferred_at?: string | null
           status_id: string
           total_fee?: number
           tracking_code: string
@@ -881,8 +1012,18 @@ export type Database = {
           sender_id?: string
           service_type?: string
           shipping_fee_payer?: string | null
+          shipping_handover_id?: string | null
           shipping_payment_method?: string | null
           shipping_payment_status?: string
+          shipping_paid_at?: string | null
+          shipping_paid_by?: string | null
+          shipping_payee_account_name?: string | null
+          shipping_payee_account_number?: string | null
+          shipping_payee_bank_bin?: string | null
+          shipping_payee_bank_name?: string | null
+          shipping_payee_kind?: string | null
+          shipping_payee_qr_url?: string | null
+          shipping_transferred_at?: string | null
           status_id?: string
           total_fee?: number
           tracking_code?: string
@@ -981,6 +1122,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payment_accounts: {
+        Row: {
+          account_name: string
+          account_number: string
+          bank_bin: string | null
+          bank_code: string | null
+          bank_name: string
+          created_at: string
+          id: string
+          is_active: boolean
+          kind: string
+          note: string
+          qr_image_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_name: string
+          account_number: string
+          bank_bin?: string | null
+          bank_code?: string | null
+          bank_name: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind: string
+          note?: string
+          qr_image_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string
+          account_number?: string
+          bank_bin?: string | null
+          bank_code?: string | null
+          bank_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind?: string
+          note?: string
+          qr_image_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       permissions: {
         Row: {
@@ -1455,6 +1641,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      confirm_cash_handover: {
+        Args: { p_id: string; p_note: string; p_user: string }
+        Returns: undefined
+      }
+      create_cash_handover: {
+        Args: { p_shipper: string }
+        Returns: string
+      }
       create_guest_order: {
         Args: { p_payload: Json }
         Returns: {
@@ -1470,6 +1664,10 @@ export type Database = {
           p_title: string
           p_type: string
         }
+        Returns: undefined
+      }
+      reject_cash_handover: {
+        Args: { p_id: string; p_note: string; p_user: string }
         Returns: undefined
       }
       take_public_tracking_slot: {
