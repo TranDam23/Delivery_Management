@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { AuthenticatedUser } from "@delivery/shared";
 import { normalizeRoleCode } from "@delivery/shared";
 import { getStoredUser, getToken, setStoredUser, setToken } from "@/lib/api-client";
+import { primeAuthSession } from "@/components/auth/auth-session-provider";
 import { roleHomePath } from "@/lib/role-routing";
 import { useRouter } from "next/navigation";
 
@@ -65,6 +66,7 @@ export default function LoginPage(): React.JSX.Element {
 
       setToken(payload.data.token, rememberMe);
       setStoredUser(payload.data.user, rememberMe);
+      primeAuthSession(payload.data.token, payload.data.user);
       router.replace(roleHomePath(payload.data.user.roleCode));
     } catch {
       setError("Không thể kết nối đến máy chủ. Vui lòng thử lại.");

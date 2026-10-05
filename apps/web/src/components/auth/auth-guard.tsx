@@ -1,9 +1,10 @@
 "use client";
 
-import type { AuthenticatedUser, RoleCode } from "@delivery/shared";
+import type { RoleCode } from "@delivery/shared";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { apiFetch, clearAuth, getToken } from "@/lib/api-client";
+import { useEffect, useSyncExternalStore } from "react";
+import { useAuthSession } from "@/components/auth/auth-session-provider";
+import { getToken, subscribeAuthToken } from "@/lib/api-client";
 import { roleHomePath } from "@/lib/role-routing";
 
 interface AuthGuardProps {
@@ -14,55 +15,38 @@ interface AuthGuardProps {
   allowedRoles?: readonly RoleCode[];
 }
 
-/** Bao ve cac trang client bang JWT va dong bo lai role tu database. */
+/** Page guards share the root session; only the first visit waits for /api/auth/me. */
 export function AuthGuard({ children, allowedRole, allowedRoles }: AuthGuardProps): React.JSX.Element {
   const router = useRouter();
   const pathname = usePathname() ?? "/";
-  const [ready, setReady] = useState(false);
+  const { session, retry } = useAuthSession();
+  const token = useSyncExternalStore(subscribeAuthToken, getToken, () => null);
+  const user = token && session.token === token ? session.user : null;
+  const roleNotAllowed = user
+    ? allowedRole
+      ? user.roleCode !== allowedRole
+      : allowedRoles
+        ? !allowedRoles.includes(user.roleCode)
+        : false
+    : false;
 
   useEffect(() => {
-    let mounted = true;
-
-    async function verifySession(): Promise<void> {
-      if (!getToken()) {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-        return;
-      }
-
-      try {
-        const result = await apiFetch<{ user: AuthenticatedUser }>("/api/auth/me");
-        if (!mounted) return;
-
-        const roleNotAllowed = allowedRole
-          ? result.user.roleCode !== allowedRole
-          : allowedRoles
-            ? !allowedRoles.includes(result.user.roleCode)
-            : false;
-        if (roleNotAllowed) {
-          router.replace(roleHomePath(result.user.roleCode));
-          return;
-        }
-
-        setReady(true);
-      } catch {
-        if (!mounted) return;
-        clearAuth();
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-      }
+    if (!token) {
+      // The hydration snapshot is null even when a browser token exists.
+      if (!getToken()) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    } else if (user && roleNotAllowed) {
+      router.replace(roleHomePath(user.roleCode));
     }
+  }, [pathname, roleNotAllowed, router, token, user]);
 
-    void verifySession();
-    return () => {
-      mounted = false;
-    };
-  }, [allowedRole, allowedRoles, pathname, router]);
-
-  if (!ready) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-dt-bg px-6 text-sm text-dt-muted">
-        Đang xác minh phiên đăng nhập...
-      </main>
-    );
+  if (!token || roleNotAllowed) return <></>;
+  if (!user) {
+    return <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-dt-bg px-6 text-sm text-dt-muted">
+      {session.error ? <>
+        <p>Chưa thể kiểm tra phiên đăng nhập. Vui lòng thử lại.</p>
+        <button type="button" onClick={retry} className="rounded-md border border-dt-border px-4 py-2 text-dt-text">Thử lại</button>
+      </> : "Đang xác minh phiên đăng nhập..."}
+    </main>;
   }
 
   return <>{children}</>;

@@ -29,11 +29,11 @@ export function CustomerSidebar(): React.JSX.Element {
 
   const content = (
     <>
-      <p className="text-[21px] font-bold text-dt-yellow">DeliverTrust</p>
-      <p className="text-[10px] text-dt-muted">Khách hàng</p>
-      <div className="my-2 h-px bg-dt-border" />
+      <p className="shrink-0 text-[21px] font-bold text-dt-yellow">DeliverTrust</p>
+      <p className="shrink-0 text-[10px] text-dt-muted">Khách hàng</p>
+      <div className="my-2 h-px shrink-0 bg-dt-border" />
 
-      <nav className="flex flex-col gap-1">
+      <nav className="flex flex-col gap-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain">
         {CUSTOMER_NAV.map((item) => {
           const active = item.href ? pathname.startsWith(item.href) : false;
           const content = (
@@ -64,7 +64,7 @@ export function CustomerSidebar(): React.JSX.Element {
         })}
       </nav>
 
-      <div className="mt-auto border-t border-dt-border pt-4">
+      <div className="mt-auto shrink-0 border-t border-dt-border pt-4">
         <LogoutButton />
       </div>
     </>
@@ -72,7 +72,7 @@ export function CustomerSidebar(): React.JSX.Element {
 
   return (
     <>
-      <aside className="hidden w-60 shrink-0 flex-col gap-2 bg-dt-side px-[18px] pb-5 pt-7 lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col gap-2 bg-dt-side px-[18px] pb-5 pt-7 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:self-start lg:overflow-hidden">
         {content}
       </aside>
       <MobileNavDrawer brand={<p className="text-[18px] font-bold text-dt-yellow">DeliverTrust</p>}>
