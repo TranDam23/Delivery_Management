@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AuthSessionProvider } from "@/components/auth/auth-session-provider";
 import { PublicNavigation } from "@/components/layout/public-navigation";
 import "./globals.css";
 
@@ -13,7 +14,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
     <html lang="vi">
-      <body className="antialiased"><PublicNavigation />{children}</body>
+      <body className="antialiased"><AuthSessionProvider><PublicNavigation />{children}</AuthSessionProvider></body>
     </html>
   );
 }

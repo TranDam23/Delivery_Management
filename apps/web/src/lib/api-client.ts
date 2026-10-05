@@ -4,6 +4,7 @@ import type { ApiResponse } from "@delivery/shared";
 
 const TOKEN_KEY = "delivertrust_token";
 const USER_KEY = "delivertrust_user";
+const AUTH_TOKEN_CHANGED_EVENT = "delivertrust:auth-token-changed";
 
 /**
  * Token JWT do POST /api/auth/login tra ve trong body (khong phai cookie), nen
@@ -20,12 +21,23 @@ export function getToken(): string | null {
   return getStoredValue(TOKEN_KEY);
 }
 
+/** Subscribe to both local auth changes and sign-in/out in another browser tab. */
+export function subscribeAuthToken(listener: () => void): () => void {
+  window.addEventListener(AUTH_TOKEN_CHANGED_EVENT, listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
 export function setToken(token: string, remember = true): void {
   const target = remember ? window.localStorage : window.sessionStorage;
   const other = remember ? window.sessionStorage : window.localStorage;
 
   other.removeItem(TOKEN_KEY);
   target.setItem(TOKEN_KEY, token);
+  window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
 }
 
 export function getStoredUser<T>(): T | null {
@@ -65,6 +77,7 @@ export function clearAuth(): void {
   window.localStorage.removeItem(TOKEN_KEY);
   window.sessionStorage.removeItem(TOKEN_KEY);
   clearStoredUser();
+  window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
 }
 
 export class ApiError extends Error {

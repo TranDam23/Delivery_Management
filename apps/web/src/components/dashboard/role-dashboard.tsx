@@ -163,11 +163,11 @@ export function DesktopSidebar({
 }): React.JSX.Element {
   const content = (
     <>
-      <div className="px-5 pb-5 pt-6">
+      <div className="shrink-0 px-5 pb-5 pt-6">
         <Brand />
       </div>
       <div className="mx-5 border-t border-dt-border" />
-      <div className="px-4 pt-5">
+      <div className="px-4 pb-4 pt-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-y-contain">
         <p className="px-3 text-[9px] font-semibold uppercase tracking-[0.16em] text-dt-muted">Không gian làm việc</p>
         <nav className="mt-3 space-y-1" aria-label={`Điều hướng ${ROLE_LABEL[roleCode]}`}>
           {navItems.map((item) => {
@@ -195,7 +195,7 @@ export function DesktopSidebar({
           })}
         </nav>
       </div>
-      <div className="mt-auto border-t border-dt-border px-5 py-5">
+      <div className="mt-auto shrink-0 border-t border-dt-border px-5 py-5">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-dt-panel2 text-[10px] font-semibold text-dt-yellow">AD</span>
           <div className="min-w-0">
@@ -210,7 +210,7 @@ export function DesktopSidebar({
 
   return (
     <>
-      <aside className="hidden min-h-screen w-[246px] shrink-0 flex-col border-r border-dt-border bg-dt-side lg:flex">
+      <aside className="hidden w-[246px] shrink-0 flex-col border-r border-dt-border bg-dt-side lg:sticky lg:top-0 lg:flex lg:h-dvh lg:self-start lg:overflow-hidden">
         {content}
       </aside>
       <MobileNavDrawer brand={<Brand />}>{content}</MobileNavDrawer>

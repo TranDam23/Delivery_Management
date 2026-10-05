@@ -37,8 +37,8 @@ export function MobileNavDrawer({
   }, [open]);
 
   return (
-    <div className="lg:hidden">
-      <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-dt-border bg-dt-side px-4 py-3">
+    <div className="h-[65px] lg:hidden">
+      <div className="fixed inset-x-0 top-0 z-40 flex min-h-[65px] items-center justify-between gap-3 border-b border-dt-border bg-dt-side px-4 py-3">
         {brand}
         <button
           type="button"

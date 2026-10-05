@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
     .eq("user_id", auth.userId)
     .eq("is_read", false);
   if (countError) return fail(countError.message, 500);
+  // Navigation badges need only the count; avoid loading and counting a page of rows.
+  if (params.get("countOnly") === "1") return ok({ unreadCount: unreadCount ?? 0 });
 
   const pageSize = 10;
   let query = supabase
