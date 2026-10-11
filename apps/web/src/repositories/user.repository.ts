@@ -6,6 +6,7 @@ export interface ListUsersParams {
   limit: number;
   search?: string;
   role?: string;
+  status?: User["status"];
 }
 
 export interface ListUsersResult {
@@ -64,7 +65,7 @@ export class UserRepository {
       .getClient()
       .from("users")
       .select(
-        "id, role_id, full_name, email, phone, avatar, province, warehouse_id, status, created_at, updated_at, last_login_at",
+        "id, role_id, full_name, email, phone, avatar, province, warehouse_id, status, created_at, updated_at, last_login_at, warehouses(id, code, name, province, warehouse_level)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -95,6 +96,9 @@ export class UserRepository {
     }
     if (params.role) {
       query = query.eq("roles.code", params.role);
+    }
+    if (params.status) {
+      query = query.eq("status", params.status);
     }
 
     const { data, error, count } = await query;

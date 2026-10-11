@@ -2,6 +2,7 @@ import { normalizeRoleCode, type RoleCode } from "@delivery/shared";
 import type { PublicUser } from "@/models/schemas/User.schema";
 import {
   UserRepository,
+  type ListUsersParams,
   type ListUsersResult,
 } from "@/repositories/user.repository";
 import { RoleRepository } from "@/repositories/role.repository";
@@ -38,12 +39,7 @@ export class AdminUsersService {
     private readonly warehouses: WarehouseRepository,
   ) {}
 
-  async listUsers(params: {
-    page: number;
-    limit: number;
-    search?: string;
-    role?: string;
-  }): Promise<{
+  async listUsers(params: ListUsersParams): Promise<{
     users: AdminUser[];
     warehouses: Awaited<ReturnType<WarehouseRepository["listActive"]>>;
     pagination: {

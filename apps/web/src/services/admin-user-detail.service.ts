@@ -13,6 +13,15 @@ export interface AdminUserDetail {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
+  province: string | null;
+  warehouseId: string | null;
+  warehouse: {
+    id: string;
+    code: string;
+    name: string;
+    province: string;
+    warehouse_level: string;
+  } | null;
 }
 
 export class AdminUserDetailService {
@@ -29,6 +38,10 @@ export class AdminUserDetailService {
     const roleCode = role ? normalizeRoleCode(role.code) : null;
     if (!roleCode) throw new Error("Account role is invalid");
 
+    const warehouse = Array.isArray((user as typeof user & { warehouses?: AdminUserDetail["warehouse"] | AdminUserDetail["warehouse"][] | null }).warehouses)
+      ? (user as typeof user & { warehouses?: AdminUserDetail["warehouse"][] }).warehouses?.[0] ?? null
+      : (user as typeof user & { warehouses?: AdminUserDetail["warehouse"] | null }).warehouses ?? null;
+
     return {
       id: user.id,
       role: roleCode,
@@ -40,6 +53,9 @@ export class AdminUserDetailService {
       createdAt: user.created_at,
       updatedAt: user.updated_at,
       lastLoginAt: user.last_login_at,
+      province: user.province,
+      warehouseId: user.warehouse_id,
+      warehouse,
     };
   }
 }

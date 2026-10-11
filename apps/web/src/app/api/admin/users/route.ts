@@ -20,7 +20,7 @@ const createSchema = z.object({
   full_name: z.string().trim().min(2, "Họ tên phải có ít nhất 2 ký tự").max(120),
   email: z.string().trim().toLowerCase().email("Email không hợp lệ").max(255),
   password: z.string().min(8, "Mật khẩu tối thiểu 8 ký tự").max(100),
-  phone: z.string().trim().regex(/^0d{9}$/, "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0").optional(),
+  phone: z.string().trim().regex(/^0\d{9}$/, "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0").optional(),
   role_code: z.nativeEnum(RoleCode),
   warehouse_id: z.string().uuid().nullable().optional(),
 });

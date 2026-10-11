@@ -1,4 +1,4 @@
-import { RoleCode } from "@delivery/shared";
+import { RoleCode, UserStatus } from "@delivery/shared";
 import type { NextRequest } from "next/server";
 import { DatabaseService } from "@/database/database.service";
 import { fail, ok } from "@/lib/api-response";
@@ -14,6 +14,11 @@ function parsePositiveInteger(value: string | null, fallback: number): number | 
 
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 1 ? parsed : null;
+}
+
+function parseUserStatus(value: string | undefined): UserStatus | undefined {
+  if (value === undefined) return undefined;
+  return Object.values(UserStatus).find((status) => status === value);
 }
 
 export async function adminUsersController(request: NextRequest) {
@@ -35,6 +40,11 @@ export async function adminUsersController(request: NextRequest) {
 
   const search = request.nextUrl.searchParams.get("search")?.trim() || undefined;
   const role = request.nextUrl.searchParams.get("role")?.trim() || undefined;
+  const statusValue = request.nextUrl.searchParams.get("status")?.trim() || undefined;
+  const status = parseUserStatus(statusValue);
+  if (statusValue !== undefined && status === undefined) {
+    return fail("Invalid user status", 400);
+  }
 
   try {
     const database = new DatabaseService();
@@ -42,7 +52,7 @@ export async function adminUsersController(request: NextRequest) {
       new UserRepository(database),
       new RoleRepository(database),
       new WarehouseRepository(database),
-    ).listUsers({ page, limit, search, role });
+    ).listUsers({ page, limit, search, role, status });
 
     return ok(result);
   } catch (error) {
