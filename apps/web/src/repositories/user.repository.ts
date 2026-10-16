@@ -31,6 +31,13 @@ export interface PasswordUserRecord {
   status: User["status"];
 }
 
+export function escapePostgrestIlikeValue(value: string): string {
+  const sqlPattern = value.replace(/[\\%_]/g, "\\$&");
+  const postgrestValue = sqlPattern.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+  return postgrestValue;
+}
+
 export class UserRepository {
   constructor(private readonly database: DatabaseService) {}
 
@@ -88,11 +95,8 @@ export class UserRepository {
       .order("created_at", { ascending: false });
 
     if (params.search) {
-      const search = params.search
-        .replace(/\\/g, "\\\\")
-        .replace(/,/g, "\\,")
-        .replace(/%/g, "\\%");
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+      const search = escapePostgrestIlikeValue(params.search);
+      query = query.or(`full_name.ilike."%${search}%",email.ilike."%${search}%"`);
     }
     if (params.role) {
       query = query.eq("roles.code", params.role);
