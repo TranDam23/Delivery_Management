@@ -9,6 +9,35 @@ import { scopedOrderIds } from "@/lib/order-scope";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import type { CodListItem, CodState } from "@/lib/cod";
 
+interface CodOrderRow {
+  id: string;
+  tracking_code: string;
+  cod_amount: number;
+  order_statuses: { code: string } | null;
+  sender: { name: string } | null;
+}
+
+interface CodTransactionRow {
+  order_id: string;
+  amount: number;
+  status: string;
+  collected_at: string | null;
+  reconciled_at: string | null;
+  collected_by: string | null;
+  reconciled_by: string | null;
+  remitted_at: string | null;
+  handed_over_at: string | null;
+}
+
+function indexUniqueTransactions(rows: CodTransactionRow[]) {
+  const byOrder = new Map<string, CodTransactionRow>();
+  for (const row of rows) {
+    if (byOrder.has(row.order_id)) return { map: null, error: `Có nhiều giao dịch COD cho đơn ${row.order_id}` };
+    byOrder.set(row.order_id, row);
+  }
+  return { map: byOrder, error: null };
+}
+
 const actionSchema = z.object({
   orderId: z.string().uuid(),
   /** reconcile: đối chiếu tiền đã thu; remit: đã chuyển trả tiền COD cho người gửi (sau đối soát). */
@@ -22,12 +51,74 @@ export async function GET(request: NextRequest) {
   if (auth.roleCode !== RoleCode.ADMIN && auth.roleCode !== RoleCode.DISPATCHER && auth.roleCode !== RoleCode.CUSTOMER && auth.roleCode !== RoleCode.DELIVERY_STAFF) return fail("Forbidden", 403);
   const page = Math.max(1, Math.min(10000, Number(request.nextUrl.searchParams.get("page")) || 1));
   const pageSize = 20;
+  const statusFilter = request.nextUrl.searchParams.get("status") ?? "all";
+  if (!["all", "pending", "collected", "reconciled"].includes(statusFilter)) return fail("Trạng thái COD không hợp lệ", 400);
   const scope = await scopedOrderIds(auth);
   if (scope.error) return fail(scope.error, scope.error === "Forbidden" ? 403 : 500);
   if (scope.ids !== null && !scope.ids.length) return ok({ items: [], total: 0, page, pageSize });
   const db = getSupabaseServiceClient();
+  if (statusFilter !== "all") {
+    const batchSize = 1000;
+    const matchingOrders: CodOrderRow[] = [];
+    const matchingTransactions = new Map<string, CodTransactionRow>();
+    let total = 0;
+
+    for (let from = 0; ; from += batchSize) {
+      let orderQuery = db.from("orders")
+        .select("id, tracking_code, cod_amount, order_statuses(code), sender:contacts!orders_sender_id_fkey(name)")
+        .gt("cod_amount", 0)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + batchSize - 1);
+      if (scope.ids !== null) orderQuery = orderQuery.in("id", scope.ids);
+      const { data: orderRows, error: orderError } = await orderQuery;
+      if (orderError) return fail(orderError.message, 500);
+      const orders = (orderRows ?? []) as unknown as CodOrderRow[];
+      if (!orders.length) break;
+
+      const { data: transactionRows, error: transactionError } = await db
+        .from("cod_transactions")
+        .select("order_id, amount, status, collected_at, reconciled_at, collected_by, reconciled_by, remitted_at, handed_over_at")
+        .in("order_id", orders.map((order) => order.id));
+      if (transactionError) return fail(transactionError.message, 500);
+      const indexed = indexUniqueTransactions((transactionRows ?? []) as CodTransactionRow[]);
+      if (indexed.error) return fail(indexed.error, 500);
+      const byOrder = indexed.map!;
+
+      for (const order of orders) {
+        const transaction = byOrder.get(order.id);
+        if ((transaction?.status ?? "pending") !== statusFilter) continue;
+        if (total >= (page - 1) * pageSize && matchingOrders.length < pageSize) {
+          matchingOrders.push(order);
+          if (transaction) matchingTransactions.set(order.id, transaction);
+        }
+        total += 1;
+      }
+      if (orders.length < batchSize) break;
+    }
+
+    const items: CodListItem[] = matchingOrders.map((order) => {
+      const transaction = matchingTransactions.get(order.id);
+      return {
+        id: order.id,
+        trackingCode: order.tracking_code,
+        senderName: order.sender?.name ?? "—",
+        amount: Number(order.cod_amount),
+        orderStatus: order.order_statuses?.code ?? "",
+        codStatus: (transaction?.status ?? "pending") as CodState,
+        collectedAt: transaction?.collected_at ?? null,
+        reconciledAt: transaction?.reconciled_at ?? null,
+        collectedBy: transaction?.collected_by ?? null,
+        reconciledBy: transaction?.reconciled_by ?? null,
+        remittedAt: transaction?.remitted_at ?? null,
+        handedOverAt: transaction?.handed_over_at ?? null,
+      };
+    });
+    return ok({ items, total, page, pageSize });
+  }
+
   let query = db.from("orders").select("id, tracking_code, cod_amount, order_statuses(code), sender:contacts!orders_sender_id_fkey(name)", { count: "exact" })
-    .gt("cod_amount", 0).order("created_at", { ascending: false }).range((page - 1) * pageSize, page * pageSize - 1);
+    .gt("cod_amount", 0).order("created_at", { ascending: false }).order("id", { ascending: false }).range((page - 1) * pageSize, page * pageSize - 1);
   if (scope.ids !== null) query = query.in("id", scope.ids);
   const { data: orders, error, count } = await query;
   if (error) return fail(error.message, 500);
@@ -36,7 +127,9 @@ export async function GET(request: NextRequest) {
     ? await db.from("cod_transactions").select("order_id, amount, status, collected_at, reconciled_at, collected_by, reconciled_by, remitted_at, handed_over_at").in("order_id", ids)
     : { data: [], error: null };
   if (transactionError) return fail(transactionError.message, 500);
-  const byOrder = new Map((transactions ?? []).map((row) => [row.order_id, row]));
+  const indexed = indexUniqueTransactions((transactions ?? []) as CodTransactionRow[]);
+  if (indexed.error) return fail(indexed.error, 500);
+  const byOrder = indexed.map!;
   const items: CodListItem[] = (orders ?? []).map((order) => {
     const transaction = byOrder.get(order.id);
     return {
