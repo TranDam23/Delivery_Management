@@ -6,6 +6,7 @@ export interface ListUsersParams {
   limit: number;
   search?: string;
   role?: string;
+  status?: User["status"];
 }
 
 export interface ListUsersResult {
@@ -28,6 +29,13 @@ export interface PasswordUserRecord {
   id: string;
   password_hash: string;
   status: User["status"];
+}
+
+export function escapePostgrestIlikeValue(value: string): string {
+  const sqlPattern = value.replace(/[\\%_]/g, "\\$&");
+  const postgrestValue = sqlPattern.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+  return postgrestValue;
 }
 
 export class UserRepository {
@@ -64,7 +72,7 @@ export class UserRepository {
       .getClient()
       .from("users")
       .select(
-        "id, role_id, full_name, email, phone, avatar, province, warehouse_id, status, created_at, updated_at, last_login_at",
+        "id, role_id, full_name, email, phone, avatar, province, warehouse_id, status, created_at, updated_at, last_login_at, warehouses(id, code, name, province, warehouse_level)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -87,14 +95,14 @@ export class UserRepository {
       .order("created_at", { ascending: false });
 
     if (params.search) {
-      const search = params.search
-        .replace(/\\/g, "\\\\")
-        .replace(/,/g, "\\,")
-        .replace(/%/g, "\\%");
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+      const search = escapePostgrestIlikeValue(params.search);
+      query = query.or(`full_name.ilike."%${search}%",email.ilike."%${search}%"`);
     }
     if (params.role) {
       query = query.eq("roles.code", params.role);
+    }
+    if (params.status) {
+      query = query.eq("status", params.status);
     }
 
     const { data, error, count } = await query;

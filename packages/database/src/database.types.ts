@@ -1641,6 +1641,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_delivery_atomic: {
+        Args: {
+          p_assigned_by: string
+          p_assigned_at: string
+          p_delivery_staff_id: string
+          p_expected_assigned_staff_id: string | null
+          p_expected_status: string
+          p_expected_updated_at: string
+          p_order_id: string
+          p_shipment_leg_id: string
+        }
+        Returns: Json
+      }
+      create_admin_user_atomic: {
+        Args: {
+          p_email: string
+          p_full_name: string
+          p_password_hash: string
+          p_phone: string | null
+          p_role_id: string
+        }
+        Returns: Json
+      }
       confirm_cash_handover: {
         Args: { p_id: string; p_note: string; p_user: string }
         Returns: undefined
@@ -1656,6 +1679,25 @@ export type Database = {
           order_id: string
           tracking_code: string
         }[]
+      }
+      update_admin_managed_user_atomic: {
+        Args: {
+          p_actor_id: string
+          p_full_name: string | null
+          p_phone: string | null
+          p_province: string | null
+          p_role_id: string | null
+          p_set_full_name: boolean
+          p_set_phone: boolean
+          p_set_province: boolean
+          p_set_role: boolean
+          p_set_status: boolean
+          p_set_warehouse: boolean
+          p_status: Database["public"]["Enums"]["user_status"] | null
+          p_user_id: string
+          p_warehouse_id: string | null
+        }
+        Returns: Json
       }
       notify_order_customers: {
         Args: {

@@ -25,13 +25,16 @@ export interface RuleResult {
 
 const OK: RuleResult = { error: null, status: 200 };
 
-export async function getMaxDeliveryAttempts(supabase: ServiceClient): Promise<number> {
-  const { data } = await supabase
+export async function getMaxDeliveryAttempts(
+  supabase: ServiceClient,
+): Promise<{ maxAttempts: number; error: string | null }> {
+  const { data, error } = await supabase
     .from("system_settings")
     .select("value")
     .eq("key", "MAX_DELIVERY_ATTEMPTS")
     .maybeSingle();
-  return Math.max(1, Number(data?.value ?? 3) || 3);
+  if (error) return { maxAttempts: 3, error: error.message };
+  return { maxAttempts: Math.max(1, Number(data?.value ?? 3) || 3), error: null };
 }
 
 /**
@@ -92,22 +95,25 @@ export async function checkLegAssignable(supabase: ServiceClient, leg: LegRuleIn
   }
 
   if (leg.status === ShipmentLegStatusCode.FAILED && leg.leg_type === ShipmentLegType.LAST_MILE) {
+    const { data: failedDelivery, error: failedDeliveryError } = await supabase
+      .from("deliveries")
+      .select("id")
+      .eq("shipment_leg_id", leg.id)
+      .maybeSingle();
+    if (failedDeliveryError) return { error: failedDeliveryError.message, status: 500 };
+    if (!failedDelivery) {
+      return { error: "Không tìm thấy bản ghi giao hàng của chặng thất bại", status: 409 };
+    }
     if (!leg.is_return) {
-      const { data: failedDelivery, error: failedDeliveryError } = await supabase
-        .from("deliveries")
-        .select("id")
-        .eq("shipment_leg_id", leg.id)
-        .maybeSingle();
-      if (failedDeliveryError) return { error: failedDeliveryError.message, status: 500 };
-      if (failedDelivery) {
-        const { count, error: countError } = await supabase
-          .from("delivery_attempts")
-          .select("id", { count: "exact", head: true })
-          .eq("delivery_id", failedDelivery.id);
-        if (countError) return { error: countError.message, status: 500 };
-        if ((count ?? 0) >= await getMaxDeliveryAttempts(supabase)) {
-          return { error: "Đơn hàng đã đạt số lần giao tối đa và được chuyển sang tuyến hoàn hàng", status: 409 };
-        }
+      const { count, error: countError } = await supabase
+        .from("delivery_attempts")
+        .select("id", { count: "exact", head: true })
+        .eq("delivery_id", failedDelivery.id);
+      if (countError) return { error: countError.message, status: 500 };
+      const attemptLimit = await getMaxDeliveryAttempts(supabase);
+      if (attemptLimit.error) return { error: attemptLimit.error, status: 500 };
+      if ((count ?? 0) >= attemptLimit.maxAttempts) {
+        return { error: "Đơn hàng đã đạt số lần giao tối đa và được chuyển sang tuyến hoàn hàng", status: 409 };
       }
     }
 

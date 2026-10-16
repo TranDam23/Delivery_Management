@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import { COD_LABEL, codStateLabel, type CodListItem, type CodState } from "@/lib/cod";
 import { formatDateTime, formatVnd } from "@/lib/order-ui";
@@ -16,16 +16,25 @@ export function CodPage({ canReconcile = false, canOpenOrder = !canReconcile }: 
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
   const load = useCallback(async () => {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
     setLoading(true);
     try {
-      setResult(await apiFetch<CodPageResult>(`/api/cod?page=${page}`));
-      setError(null);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Không tải được COD"); }
-    finally { setLoading(false); }
-  }, [page]);
+      const nextResult = await apiFetch<CodPageResult>(`/api/cod?page=${page}&status=${encodeURIComponent(filter)}`);
+      if (requestVersion.current === version) {
+        setResult(nextResult);
+        setError(null);
+      }
+    } catch (caught) {
+      if (requestVersion.current === version) setError(caught instanceof Error ? caught.message : "Không tải được COD");
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }, [page, filter]);
   useEffect(() => { void load(); }, [load]);
-  const items = useMemo(() => filter === "all" ? result?.items ?? [] : (result?.items ?? []).filter((item) => item.codStatus === filter), [result, filter]);
+  const items = result?.items ?? [];
   const pageTotal = items.reduce((sum, item) => sum + item.amount, 0);
 
   async function remit(item: CodListItem) {
@@ -59,9 +68,9 @@ export function CodPage({ canReconcile = false, canOpenOrder = !canReconcile }: 
       <p className="mt-2 text-amber-300">Hệ thống không tự chuyển tiền: nhân viên chuyển khoản cho người gửi bên ngoài rồi ghi nhận lại để lưu vết.</p>
     </div>
     <div className="flex flex-wrap gap-2" aria-label="Lọc trạng thái COD">
-      {(["all", "pending", "collected", "reconciled"] as Filter[]).map((value) => <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-md border px-3 py-2 text-xs ${filter === value ? "border-dt-yellow text-dt-yellow" : "border-dt-border text-dt-muted"}`}>{value === "all" ? "Tất cả" : COD_LABEL[value]}</button>)}
+      {(["all", "pending", "collected", "reconciled"] as Filter[]).map((value) => <button key={value} type="button" onClick={() => { setFilter(value); setPage(1); }} className={`rounded-md border px-3 py-2 text-xs ${filter === value ? "border-dt-yellow text-dt-yellow" : "border-dt-border text-dt-muted"}`}>{value === "all" ? "Tất cả" : COD_LABEL[value]}</button>)}
     </div>
-    <p className="text-sm text-dt-muted">Tổng COD các đơn đang hiển thị trên trang này: <span className="font-semibold text-dt-text">{formatVnd(pageTotal)}</span></p>
+    <p className="text-sm text-dt-muted">Tổng COD các đơn trong trang này: <span className="font-semibold text-dt-text">{formatVnd(pageTotal)}</span></p>
     {error ? <p role="alert" className="text-sm text-dt-red">{error}</p> : null}
     <div className="overflow-x-auto rounded-dt border border-dt-border bg-dt-panel">
       <table className="w-full min-w-[900px] text-left text-xs"><thead className="border-b border-dt-border text-dt-muted"><tr><th className="p-3">Mã đơn</th><th className="p-3">Người gửi</th><th className="p-3">COD phải thu</th><th className="p-3">Trạng thái</th><th className="p-3">Thời gian thu</th><th className="p-3">Đối soát</th><th className="p-3">Thao tác</th></tr></thead><tbody>
@@ -71,6 +80,6 @@ export function CodPage({ canReconcile = false, canOpenOrder = !canReconcile }: 
     </div>
     {loading ? <p className="text-sm text-dt-muted">Đang tải...</p> : null}
     <div className="flex items-center justify-between text-xs text-dt-muted"><span>Trang {page} / {Math.max(1, Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 20)))} · {result?.total ?? 0} đơn COD</span><div className="flex gap-2"><button type="button" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)} className="rounded border border-dt-border px-3 py-2 disabled:opacity-40">Trước</button><button type="button" disabled={loading || page * (result?.pageSize ?? 20) >= (result?.total ?? 0)} onClick={() => setPage((value) => value + 1)} className="rounded border border-dt-border px-3 py-2 disabled:opacity-40">Tiếp</button></div></div>
-    <p className="text-xs text-dt-muted">Bộ lọc áp dụng cho trang hiện tại. Chuyển trang để xem thêm đơn cùng trạng thái.</p>
+    <p className="text-xs text-dt-muted">Bộ lọc trạng thái được áp dụng trên toàn bộ danh sách; tổng tiền trên đây là tổng của trang hiện tại.</p>
   </div>;
 }

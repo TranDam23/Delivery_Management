@@ -67,6 +67,11 @@ interface PlanningLeg {
   updated_at: string;
 }
 
+interface DeliveryRow {
+  id: string;
+  shipment_leg_id: string | null;
+}
+
 interface WarehouseRow {
   id: string;
   code: string;
@@ -87,6 +92,7 @@ interface StaffRow {
 }
 
 interface RouteLegWithDetails extends PlanningLeg {
+  delivery_id: string | null;
   from_warehouse: WarehouseRow | null;
   to_warehouse: WarehouseRow | null;
   assigned_staff: StaffRow | null;
@@ -143,8 +149,13 @@ async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWare
     ),
   );
   const staffIds = Array.from(new Set(legs.map((leg) => leg.assigned_staff_id).filter(Boolean) as string[]));
+  const legIds = legs.map((leg) => leg.id);
 
-  const [{ data: warehouses, error: warehousesError }, { data: staff, error: staffError }] = await Promise.all([
+  const [
+    { data: warehouses, error: warehousesError },
+    { data: staff, error: staffError },
+    { data: deliveries, error: deliveriesError },
+  ] = await Promise.all([
     warehouseIds.length > 0
       ? supabase
           .from("warehouses")
@@ -154,9 +165,13 @@ async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWare
     staffIds.length > 0
       ? supabase.from("users").select("id, full_name, phone").in("id", staffIds)
       : Promise.resolve({ data: [], error: null }),
+    legIds.length > 0
+      ? supabase.from("deliveries").select("id, shipment_leg_id").in("shipment_leg_id", legIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (warehousesError) return { items: [], error: warehousesError.message };
   if (staffError) return { items: [], error: staffError.message };
+  if (deliveriesError) return { items: [], error: deliveriesError.message };
 
   let allWarehouses = (warehouses as WarehouseRow[] | null ?? []);
   if (dispatcherScope?.warehouseId) {
@@ -171,6 +186,11 @@ async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWare
 
   const warehouseById = new Map(allWarehouses.map((warehouse) => [warehouse.id, warehouse]));
   const staffById = new Map((staff as StaffRow[] | null ?? []).map((member) => [member.id, member]));
+  const deliveryByLegId = new Map(
+    (deliveries as DeliveryRow[] | null ?? [])
+      .filter((delivery) => delivery.shipment_leg_id)
+      .map((delivery) => [delivery.shipment_leg_id as string, delivery.id]),
+  );
   const legsByOrder = new Map<string, PlanningLeg[]>();
   legs.forEach((leg) => {
     const current = legsByOrder.get(leg.order_id) ?? [];
@@ -182,6 +202,7 @@ async function getRouteItems(orderId?: string, dispatcherScope?: OperationalWare
     order: includeItems ? { ...order, order_items: itemsByOrder.get(order.id) ?? [] } : order,
     legs: (legsByOrder.get(order.id) ?? []).map((leg) => ({
       ...leg,
+      delivery_id: deliveryByLegId.get(leg.id) ?? null,
       from_warehouse: leg.from_warehouse_id ? warehouseById.get(leg.from_warehouse_id) ?? null : null,
       to_warehouse: leg.to_warehouse_id ? warehouseById.get(leg.to_warehouse_id) ?? null : null,
       assigned_staff: leg.assigned_staff_id ? staffById.get(leg.assigned_staff_id) ?? null : null,
