@@ -20,8 +20,6 @@ const patchSchema = z.object({
   phone: z.string().trim().regex(/^0\d{9}$/, "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0").nullable().optional(),
 });
 
-const SELECT = "id, full_name, email, phone, province, warehouse_id, status, roles(code, name), warehouses(id, code, name, province, warehouse_level)";
-
 /**
  * PATCH /api/admin/users/:id — Admin cập nhật tài khoản: gán kho, khóa/mở khóa,
  * đổi vai trò (phân quyền), đổi họ tên/số điện thoại. Mọi thay đổi được ghi audit log.
@@ -62,15 +60,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   if (id === auth.userId && (nextRole !== RoleCode.ADMIN || nextStatus !== UserStatus.ACTIVE)) {
     return fail("Không thể tự hạ quyền hoặc khóa chính tài khoản đang đăng nhập", 400);
   }
-  if (currentRole === RoleCode.ADMIN && (nextRole !== RoleCode.ADMIN || nextStatus !== UserStatus.ACTIVE)) {
-    const { count, error: countError } = await supabase.from("users")
-      .select("id, roles!inner(code)", { count: "exact", head: true })
-      .eq("roles.code", RoleCode.ADMIN).eq("status", UserStatus.ACTIVE).neq("id", id);
-    if (countError) return fail(countError.message, 500);
-    if ((count ?? 0) === 0) return fail("Phải còn ít nhất một quản trị viên đang hoạt động", 409);
-  }
 
-  const update: Record<string, unknown> = {};
+  const update: {
+    role_id?: string;
+    status?: UserStatus;
+    full_name?: string;
+    phone?: string | null;
+    warehouse_id?: string | null;
+    province?: string | null;
+  } = {};
   if (input.full_name !== undefined) update.full_name = input.full_name;
   if (input.phone !== undefined) update.phone = input.phone;
   if (input.status !== undefined) update.status = input.status;
@@ -99,12 +97,32 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  const { data, error } = await supabase.from("users").update(update as never).eq("id", id).select(SELECT).single();
-  if (error) return fail(error.message, 500);
-
-  if (input.status !== undefined && input.status !== UserStatus.ACTIVE) {
-    await supabase.from("refresh_tokens").update({ revoked_at: new Date().toISOString() }).eq("user_id", id).is("revoked_at", null);
+  const { data, error } = await supabase.rpc("update_admin_managed_user_atomic", {
+    p_user_id: id,
+    p_actor_id: auth.userId,
+    p_role_id: update.role_id ?? null,
+    p_set_role: update.role_id !== undefined,
+    p_status: update.status ?? null,
+    p_set_status: update.status !== undefined,
+    p_full_name: update.full_name ?? null,
+    p_set_full_name: update.full_name !== undefined,
+    p_phone: update.phone ?? null,
+    p_set_phone: update.phone !== undefined,
+    p_warehouse_id: update.warehouse_id ?? null,
+    p_set_warehouse: update.warehouse_id !== undefined,
+    p_province: update.province ?? null,
+    p_set_province: update.province !== undefined,
+  });
+  if (error) {
+    if (error.message === "USER_NOT_FOUND") return fail("Không tìm thấy tài khoản", 404);
+    if (error.message === "ROLE_NOT_FOUND") return fail("Vai trò không tồn tại", 400);
+    if (error.message === "SELF_ADMIN_MODIFICATION") return fail("Không thể tự hạ quyền hoặc khóa chính tài khoản đang đăng nhập", 400);
+    if (error.message === "LAST_ACTIVE_ADMIN") return fail("Phải còn ít nhất một quản trị viên đang hoạt động", 409);
+    console.error("update_admin_managed_user_atomic failed", error.code);
+    return fail("Không thể cập nhật tài khoản", 500);
   }
+  if (!data) return fail("Không thể cập nhật tài khoản", 500);
+
   await writeAuditLog({
     userId: auth.userId,
     action: roleChanged ? "USER_ROLE_CHANGED" : input.status !== undefined ? "USER_STATUS_CHANGED" : "USER_UPDATED",

@@ -45,10 +45,31 @@ export async function POST(request: NextRequest) {
   if (roleError) return fail(roleError.message, 500);
   if (!role) return fail("Vai trò không tồn tại", 400);
 
+  const passwordHash = await hashPassword(input.password);
+  if (input.role_code === RoleCode.ADMIN) {
+    const { data, error } = await supabase.rpc("create_admin_user_atomic", {
+      p_full_name: input.full_name,
+      p_email: input.email,
+      p_password_hash: passwordHash,
+      p_phone: input.phone ?? null,
+      p_role_id: role.id,
+    });
+    if (error) {
+      if (error.code === "23505") return fail("Email này đã được sử dụng", 409);
+      console.error("create_admin_user_atomic failed", error.code);
+      return fail("Không thể tạo tài khoản", 500);
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data) || typeof data.id !== "string") {
+      return fail("Không thể tạo tài khoản", 500);
+    }
+    await writeAuditLog({ userId: auth.userId, action: "USER_CREATED", entityType: "user", entityId: data.id, newData: { email: input.email, role: input.role_code, warehouse_id: null }, request });
+    return ok(data, 201);
+  }
+
   const { data, error } = await supabase.from("users").insert({
     full_name: input.full_name,
     email: input.email,
-    password_hash: await hashPassword(input.password),
+    password_hash: passwordHash,
     phone: input.phone ?? null,
     role_id: role.id,
     status: "active",

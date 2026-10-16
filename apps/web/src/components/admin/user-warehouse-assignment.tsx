@@ -2,6 +2,7 @@
 
 import { CheckCircle2, RefreshCw, Settings2, Warehouse as WarehouseIcon } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { RoleCode, WarehouseLevelCode, type Warehouse } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
@@ -87,11 +88,14 @@ function warehouseLabel(warehouse: AssignedWarehouse | null): string {
 }
 
 export function UserWarehouseAssignmentPage(): React.JSX.Element {
+  const searchParams = useSearchParams();
+  const requestedRole = searchParams.get("role") ?? "";
+  const isDeliveryStaffPage = requestedRole === RoleCode.DELIVERY_STAFF;
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [warehouses, setWarehouses] = useState<AssignedWarehouse[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState(requestedRole);
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<UsersResponse["pagination"]>({
@@ -100,7 +104,7 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
     total: 0,
     totalPages: 0,
   });
-  const [form, setForm] = useState({ full_name: "", email: "", password: "", phone: "", role_code: RoleCode.DELIVERY_STAFF as string, warehouse_id: "" });
+  const [form, setForm] = useState({ full_name: "", email: "", password: "", phone: "", role_code: (requestedRole || RoleCode.DELIVERY_STAFF) as string, warehouse_id: "" });
   const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -151,12 +155,12 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
   }, [debouncedSearch, loadData, page, roleFilter, statusFilter]);
 
   useEffect(() => {
-    const role = new URLSearchParams(window.location.search).get("role");
-    if (role) {
-      setRoleFilter(role);
-      setForm((current) => ({ ...current, role_code: role }));
+    setRoleFilter(requestedRole);
+    if (requestedRole) {
+      setForm((current) => ({ ...current, role_code: requestedRole }));
     }
-  }, []);
+    setPage(1);
+  }, [requestedRole]);
 
   const filteredUsers = users;
   const totalPages = Math.max(1, pagination.totalPages);
@@ -228,35 +232,37 @@ export function UserWarehouseAssignmentPage(): React.JSX.Element {
   return (
     <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
       <PageHeader
-        heading="Phân công tài khoản vận hành"
-        subtitle="Gán điều phối viên, nhân viên giao nhận và nhân viên kho vào đúng kho phụ trách."
+        heading={isDeliveryStaffPage ? "Nhân viên giao hàng" : "Phân công tài khoản vận hành"}
+        subtitle={isDeliveryStaffPage ? "Quản lý danh sách nhân viên giao hàng và kho phụ trách." : "Gán điều phối viên, nhân viên giao nhận và nhân viên kho vào đúng kho phụ trách."}
         action={<Button variant="secondary" onClick={() => void loadData(page, debouncedSearch, roleFilter, statusFilter)} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button>}
       />
 
       {error ? <p role="alert" className="mt-4 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
       {notice ? <p role="status" className="mt-4 rounded-dt border border-dt-green/30 bg-dt-green/10 px-4 py-3 text-[12px] text-dt-green">{notice}</p> : null}
 
-      <Card className="mt-5 gap-4">
-        <CardLabel>Tạo tài khoản mới</CardLabel>
-        <form onSubmit={(event) => void createUser(event)} className="grid gap-3 md:grid-cols-3">
-          <TextField label="Họ tên" required value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
-          <TextField label="Email" type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          <TextField label="Mật khẩu (tối thiểu 8 ký tự)" type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
-          <TextField label="Số điện thoại" inputMode="numeric" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-          <SelectField label="Vai trò" value={form.role_code} onChange={(event) => setForm({ ...form, role_code: event.target.value, warehouse_id: "" })}>
-            {ROLE_OPTIONS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
-          </SelectField>
-          {OPERATIONAL_ROLES.has(form.role_code) ? (
-            <WarehouseAssignmentPicker
-              label="Kho phụ trách"
-              warehouses={warehousesForRole(form.role_code)}
-              value={form.warehouse_id}
-              onChange={(warehouse_id) => setForm({ ...form, warehouse_id })}
-            />
-          ) : <div />}
-          <div className="md:col-span-3"><Button type="submit" disabled={creating}>Tạo tài khoản</Button></div>
-        </form>
-      </Card>
+      {!isDeliveryStaffPage ? (
+        <Card className="mt-5 gap-4">
+          <CardLabel>Tạo tài khoản mới</CardLabel>
+          <form onSubmit={(event) => void createUser(event)} className="grid gap-3 md:grid-cols-3">
+            <TextField label="Họ tên" required value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
+            <TextField label="Email" type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            <TextField label="Mật khẩu (tối thiểu 8 ký tự)" type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
+            <TextField label="Số điện thoại" inputMode="numeric" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            <SelectField label="Vai trò" value={form.role_code} onChange={(event) => setForm({ ...form, role_code: event.target.value, warehouse_id: "" })}>
+              {ROLE_OPTIONS.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
+            </SelectField>
+            {OPERATIONAL_ROLES.has(form.role_code) ? (
+              <WarehouseAssignmentPicker
+                label="Kho phụ trách"
+                warehouses={warehousesForRole(form.role_code)}
+                value={form.warehouse_id}
+                onChange={(warehouse_id) => setForm({ ...form, warehouse_id })}
+              />
+            ) : <div />}
+            <div className="md:col-span-3"><Button type="submit" disabled={creating}>Tạo tài khoản</Button></div>
+          </form>
+        </Card>
+      ) : null}
 
       <Card className="mt-5 gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">

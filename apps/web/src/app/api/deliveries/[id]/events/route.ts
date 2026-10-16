@@ -261,8 +261,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       nextOrderStatusCode = leg.is_return ? OrderStatusCode.RETURNED : OrderStatusCode.DELIVERED;
     } else if (!leg.is_return) {
       // Hết số lần giao: đơn chờ kho nhận lại hàng để tự lập tuyến hoàn.
-      const maxAttempts = await getMaxDeliveryAttempts(supabase);
-      nextOrderStatusCode = attemptNo < maxAttempts ? OrderStatusCode.REDELIVERY : OrderStatusCode.DELIVERY_FAILED;
+      const attemptLimit = await getMaxDeliveryAttempts(supabase);
+      if (attemptLimit.error) {
+        console.error("Không đọc được giới hạn số lần giao");
+        return fail("Không thể xác định giới hạn số lần giao", 500);
+      }
+      nextOrderStatusCode = attemptNo < attemptLimit.maxAttempts ? OrderStatusCode.REDELIVERY : OrderStatusCode.DELIVERY_FAILED;
     }
   }
 
@@ -289,11 +293,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       nextStatusId = nextStatus?.id;
     }
     if (!nextStatusId) return fail("Không tìm thấy trạng thái tiếp theo", 500);
-    await supabase
+    const { data: updatedOrder, error: orderUpdateError } = await supabase
       .from("orders")
       .update({ status_id: nextStatusId })
       .eq("id", delivery.order_id)
-      .eq("status_id", currentStatusId);
+      .eq("status_id", currentStatusId)
+      .select("id")
+      .maybeSingle();
+    if (orderUpdateError) {
+      console.error("Không cập nhật được trạng thái đơn sau sự kiện giao hàng", orderUpdateError.code);
+      return fail("Không thể cập nhật trạng thái đơn hàng", 500);
+    }
+    if (!updatedOrder) return fail("Trạng thái đơn đã thay đổi; hãy tải lại dữ liệu", 409);
   }
 
   let codTransaction: unknown = null;

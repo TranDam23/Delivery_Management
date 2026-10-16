@@ -378,8 +378,8 @@ function AdminHome(props: RoleDashboardProps): React.JSX.Element {
   }, [loadDashboard]);
 
   const metrics: Metric[] = [
-    { label: "Đơn đang xử lý", value: stats ? String(stats.inProgressOrders) : "—", detail: loading ? "Đang tải..." : "Trong 30 ngày gần đây", icon: ClipboardList, tone: "yellow" },
-    { label: "Đơn đã giao", value: stats ? String(stats.deliveredOrders) : "—", detail: loading ? "Đang tải..." : "Trong 30 ngày gần đây", icon: PackageCheck, tone: "green" },
+    { label: "Đơn đang xử lý", value: stats ? String(stats.inProgressOrders) : "—", detail: loading ? "Đang tải..." : "Trạng thái hiện tại toàn hệ thống", icon: ClipboardList, tone: "yellow" },
+    { label: "Đơn đã giao", value: stats ? String(stats.deliveredOrders) : "—", detail: loading ? "Đang tải..." : "Đơn tạo trong 30 ngày gần đây, hiện đã giao", icon: PackageCheck, tone: "green" },
     { label: "Tài khoản hoạt động", value: stats?.system?.activeUsers !== undefined ? String(stats.system.activeUsers) : "—", detail: loading ? "Đang tải..." : "Tài khoản có trạng thái active", icon: Users, tone: "blue" },
     { label: "Cảnh báo cần xử lý", value: stats?.system?.openAlerts !== undefined ? String(stats.system.openAlerts) : "—", detail: loading ? "Đang tải..." : "Cảnh báo đang mở", icon: AlertTriangle, tone: "red" },
   ];

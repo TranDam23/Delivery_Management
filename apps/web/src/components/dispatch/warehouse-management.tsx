@@ -409,6 +409,12 @@ export function WarehouseManagementPage(): React.JSX.Element {
   }
 
   async function toggleWarehouse(warehouse: Warehouse): Promise<void> {
+    const nextStatus = warehouse.status === WarehouseStatusCode.ACTIVE
+      ? WarehouseStatusCode.INACTIVE
+      : WarehouseStatusCode.ACTIVE;
+    const actionLabel = nextStatus === WarehouseStatusCode.ACTIVE ? "kích hoạt lại" : "tạm dừng";
+    if (!window.confirm(`Bạn có chắc muốn ${actionLabel} kho ${warehouse.code}?`)) return;
+
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -416,10 +422,10 @@ export function WarehouseManagementPage(): React.JSX.Element {
       await apiFetch<Warehouse>(`/api/warehouses/${warehouse.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          status: warehouse.status === WarehouseStatusCode.ACTIVE ? WarehouseStatusCode.INACTIVE : WarehouseStatusCode.ACTIVE,
+          status: nextStatus,
         }),
       });
-      setNotice(`Đã ${warehouse.status === WarehouseStatusCode.ACTIVE ? "vô hiệu hóa" : "kích hoạt lại"} kho ${warehouse.code}.`);
+      setNotice(`Đã ${nextStatus === WarehouseStatusCode.ACTIVE ? "kích hoạt lại" : "vô hiệu hóa"} kho ${warehouse.code}.`);
       await loadData();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không thể cập nhật kho");

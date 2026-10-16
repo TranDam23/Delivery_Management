@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -21,6 +21,11 @@ interface StatsResult {
   lateOrders: number;
   successRate: number;
   completionSuccessRate: number;
+  deliveredEventsInPeriod: number;
+  failedEventsInPeriod: number;
+  returnedEventsInPeriod: number;
+  eventSuccessRate: number;
+  eventFailureRate: number;
   truncated: boolean;
   byStatus: Record<string, number>;
   series: Bucket[];
@@ -59,21 +64,26 @@ export function StatsPanel({ heading = "Thống kê & báo cáo", subtitle = "S�
   const [data, setData] = useState<StatsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
 
   const load = useCallback(async () => {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
     setLoading(true);
     setError(null);
+    setData(null);
     if (from > to) {
       setError("Ngày bắt đầu không được sau ngày kết thúc.");
       setLoading(false);
       return;
     }
     try {
-      setData(await apiFetch<StatsResult>(`/api/stats?period=${period}&from=${from}&to=${to}`));
+      const nextData = await apiFetch<StatsResult>(`/api/stats?period=${period}&from=${from}&to=${to}`);
+      if (requestVersion.current === version) setData(nextData);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không tải được thống kê");
+      if (requestVersion.current === version) setError(caught instanceof Error ? caught.message : "Không tải được thống kê");
     } finally {
-      setLoading(false);
+      if (requestVersion.current === version) setLoading(false);
     }
   }, [period, from, to]);
   useEffect(() => { void load(); }, [load]);
@@ -103,9 +113,9 @@ export function StatsPanel({ heading = "Thống kê & báo cáo", subtitle = "S�
     {error ? <p role="alert" className="mt-4 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
     {data ? <>
       <section className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số tổng quan">
-        <Metric label="Tổng số đơn" value={formatNumber(data.totalOrders)} hint={`${formatNumber(data.inProgressOrders)} đang xử lý`} />
-        <Metric label="Giao thành công" value={formatNumber(data.deliveredOrders)} tone="green" hint={`${data.successRate}% trên tổng đơn · ${data.completionSuccessRate}% trên đơn đã có kết quả`} />
-        <Metric label="Thất bại / hoàn hàng" value={`${formatNumber(data.failedOrders)} / ${formatNumber(data.returnedOrders)}`} tone="yellow" hint={`${formatNumber(data.cancelledOrders)} đơn đã hủy`} />
+        <Metric label="Tổng số đơn trong kỳ" value={formatNumber(data.totalOrders)} hint={`${formatNumber(data.inProgressOrders)} đang xử lý hiện tại trong phạm vi của bạn`} />
+        <Metric label="Giao thành công (đơn tạo trong kỳ)" value={formatNumber(data.deliveredOrders)} tone="green" hint={`${data.successRate}% trên tổng đơn tạo trong kỳ · ${data.completionSuccessRate}% trên đơn đã có kết quả cuối`} />
+        <Metric label="Kết quả phát sinh trong kỳ" value={`${formatNumber(data.deliveredEventsInPeriod)} / ${formatNumber(data.failedEventsInPeriod)} / ${formatNumber(data.returnedEventsInPeriod)}`} tone="yellow" hint={`${data.eventSuccessRate}% thành công · ${data.eventFailureRate}% thất bại; mỗi đơn tính một lần theo outcome sau cùng trong khoảng thời gian đã chọn`} />
         <Metric label="Đơn trễ hạn" value={formatNumber(data.lateOrders)} tone={data.lateOrders > 0 ? "red" : undefined} hint="Quá thời gian giao dự kiến, chưa hoàn tất" />
         {data.system?.activeUsers !== undefined ? <Metric label="Tài khoản hoạt động" value={formatNumber(data.system.activeUsers)} /> : null}
         {data.system?.openAlerts !== undefined ? <Metric label="Cảnh báo đang mở" value={formatNumber(data.system.openAlerts)} tone={data.system.openAlerts > 0 ? "red" : undefined} /> : null}

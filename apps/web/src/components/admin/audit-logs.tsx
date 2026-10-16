@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,42 +27,54 @@ export function AuditLogsPage(): React.JSX.Element {
   const [action, setAction] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [entityType, setEntityType] = useState("");
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<AuditResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
 
   const load = useCallback(async () => {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
     setLoading(true);
+    setResult(null);
+    setError(null);
     const query = new URLSearchParams({ page: String(page) });
     if (action.trim()) query.set("action", action.trim());
     if (from) query.set("from", from);
     if (to) query.set("to", to);
+    if (entityType.trim()) query.set("entityType", entityType.trim());
     try {
-      setResult(await apiFetch<AuditResult>(`/api/audit-logs?${query.toString()}`));
-      setError(null);
+      const nextResult = await apiFetch<AuditResult>(`/api/audit-logs?${query.toString()}`);
+      if (requestVersion.current === version) {
+        setResult(nextResult);
+        setError(null);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không tải được nhật ký");
+      if (requestVersion.current === version) setError(caught instanceof Error ? caught.message : "Không tải được nhật ký");
     } finally {
-      setLoading(false);
+      if (requestVersion.current === version) setLoading(false);
     }
-  }, [action, from, to, page]);
+  }, [action, entityType, from, to, page]);
   useEffect(() => { void load(); }, [load]);
 
   const pages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   return <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
     <PageHeader heading="Nhật ký thao tác (Audit log)" subtitle="Lịch sử các thao tác quan trọng: ai làm gì, lúc nào, dữ liệu trước và sau." action={<Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button>} />
     <Card className="mt-5">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <TextField label="Hành động" value={action} placeholder="Ví dụ: COD, USER, PAYMENT" onChange={(event) => { setAction(event.target.value); setPage(1); }} />
+        <TextField label="Loại đối tượng" value={entityType} placeholder="Ví dụ: order, user" onChange={(event) => { setEntityType(event.target.value); setPage(1); }} />
         <TextField label="Từ ngày" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} />
         <TextField label="Đến ngày" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} />
       </div>
     </Card>
     {error ? <p role="alert" className="mt-4 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
     <Card className="mt-4">
-      {result && result.items.length === 0 ? <p className="text-[12px] text-dt-muted">Chưa có bản ghi nào.</p> : null}
-      <div className="overflow-x-auto">
+      {loading ? <p className="mb-3 text-[12px] text-dt-muted" role="status">Đang tải nhật ký...</p> : null}
+      {!loading && result && result.items.length === 0 ? <p className="text-[12px] text-dt-muted">Chưa có bản ghi nào.</p> : null}
+      <div className={loading ? "hidden" : "overflow-x-auto"}>
         <table className="w-full min-w-[860px] text-left text-[11px]">
           <thead className="border-b border-dt-border text-[10px] uppercase tracking-wide text-dt-muted">
             <tr><th className="py-2 font-medium">Thời gian</th><th className="py-2 font-medium">Người thực hiện</th><th className="py-2 font-medium">Hành động</th><th className="py-2 font-medium">Đối tượng</th><th className="py-2 font-medium">Thay đổi</th></tr>

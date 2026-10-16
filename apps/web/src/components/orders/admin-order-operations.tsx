@@ -59,6 +59,11 @@ const PICKUP_WAITING_ORDER_STATUSES: string[] = [
   OrderStatusCode.PENDING_ASSIGNMENT,
   OrderStatusCode.ASSIGNED,
 ];
+const LAST_MILE_READY_ORDER_STATUSES: string[] = [
+  OrderStatusCode.IN_WAREHOUSE,
+  OrderStatusCode.IN_TRANSIT,
+  OrderStatusCode.REDELIVERY,
+];
 
 function statusActions(leg: RouteLeg, orderStatus: string): StatusAction[] {
   if (!leg.delivery_id) return [];
@@ -73,13 +78,23 @@ function statusActions(leg: RouteLeg, orderStatus: string): StatusAction[] {
     ];
   }
   if (leg.leg_type !== ShipmentLegType.LAST_MILE || leg.status !== ShipmentLegStatusCode.IN_PROGRESS) return [];
-  if (orderStatus !== OrderStatusCode.DELIVERING && orderStatus !== OrderStatusCode.RETURNING) {
+  if (leg.is_return) {
+    return orderStatus === OrderStatusCode.RETURNING
+      ? [
+          { code: BlockchainEventType.DELIVERED, label: "Đã hoàn cho người gửi" },
+          { code: BlockchainEventType.DELIVERY_FAILED, label: "Giao hoàn thất bại" },
+        ]
+      : [];
+  }
+  if (LAST_MILE_READY_ORDER_STATUSES.includes(orderStatus)) {
     return [{ code: BlockchainEventType.DELIVERING, label: "Bắt đầu giao" }];
   }
-  return [
-    { code: BlockchainEventType.DELIVERED, label: leg.is_return ? "Đã hoàn cho người gửi" : "Giao thành công" },
-    { code: BlockchainEventType.DELIVERY_FAILED, label: "Giao thất bại" },
-  ];
+  return orderStatus === OrderStatusCode.DELIVERING
+    ? [
+        { code: BlockchainEventType.DELIVERED, label: "Giao thành công" },
+        { code: BlockchainEventType.DELIVERY_FAILED, label: "Giao thất bại" },
+      ]
+    : [];
 }
 
 export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperationsProps): React.JSX.Element {
@@ -208,6 +223,9 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
         {activeLegs.map((leg) => {
           const actions = statusActions(leg, orderStatus);
           const staffForLeg = staff.filter((member) => member.warehouse_id === (leg.leg_type === ShipmentLegType.PICKUP ? leg.to_warehouse_id : leg.from_warehouse_id));
+          const canAssign = leg.status !== ShipmentLegStatusCode.IN_PROGRESS
+            && leg.status !== ShipmentLegStatusCode.COMPLETED
+            && leg.status !== ShipmentLegStatusCode.CANCELLED;
           return (
             <div key={leg.id} className="rounded-md border border-dt-border bg-dt-panel2 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
@@ -215,11 +233,11 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
                 <span className="text-dt-muted">{legStatusLabel(leg.status)} · Cập nhật {formatDateTime(leg.updated_at)}</span>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                <SelectField label="Nhân viên giao hàng" value={selectedStaff[leg.id] ?? leg.assigned_staff_id ?? ""} onChange={(event) => setSelectedStaff((current) => ({ ...current, [leg.id]: event.target.value }))} disabled={saving === leg.id || leg.status === ShipmentLegStatusCode.IN_PROGRESS}>
+                <SelectField label="Nhân viên giao hàng" value={selectedStaff[leg.id] ?? leg.assigned_staff_id ?? ""} onChange={(event) => setSelectedStaff((current) => ({ ...current, [leg.id]: event.target.value }))} disabled={saving === leg.id || !canAssign}>
                   <option value="">Chưa phân công</option>
                   {staffForLeg.map((member) => <option key={member.id} value={member.id}>{member.full_name}{member.phone ? ` · ${member.phone}` : ""}</option>)}
                 </SelectField>
-                <Button onClick={() => void assign(leg)} disabled={saving === leg.id || staffForLeg.length === 0}>{saving === leg.id ? "Đang lưu..." : "Phân công"}</Button>
+                <Button onClick={() => void assign(leg)} disabled={saving === leg.id || !canAssign || staffForLeg.length === 0}>{saving === leg.id ? "Đang lưu..." : "Phân công"}</Button>
               </div>
               {actions.length > 0 ? (
                 <div className="mt-3 grid gap-3 md:grid-cols-2">

@@ -184,7 +184,11 @@ export async function POST(request: NextRequest) {
   }
   if (!transaction.handed_over_at) return fail("Shipper chưa nộp tiền COD về bưu cục hoặc bưu cục chưa xác nhận phiếu nộp. Chưa thể đối soát.", 409);
   if (Number(transaction.amount) !== Number(order.cod_amount)) return fail("Tiền đã thu không khớp tiền COD của đơn", 409);
-  const { data: deliveredStatus } = await db.from("order_statuses").select("id").eq("code", OrderStatusCode.DELIVERED).maybeSingle();
+  const { data: deliveredStatus, error: deliveredStatusError } = await db.from("order_statuses")
+    .select("id")
+    .eq("code", OrderStatusCode.DELIVERED)
+    .maybeSingle();
+  if (deliveredStatusError) return fail(deliveredStatusError.message, 500);
   if (!deliveredStatus) return fail("Thiếu trạng thái giao thành công", 500);
   const { data: proof, error: proofError } = await db.from("delivery_events").select("id")
     .eq("order_id", parsed.data.orderId).eq("status_id", deliveredStatus.id).not("image_url", "is", null).limit(1).maybeSingle();
