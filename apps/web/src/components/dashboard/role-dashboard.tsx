@@ -1,12 +1,15 @@
+"use client";
+
 import { RoleCode, type RoleCode as RoleCodeType } from "@delivery/shared";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
   Bell,
-  CheckCircle2,
   ChevronRight,
   ClipboardList,
   Clock3,
@@ -33,6 +36,8 @@ import { CustomerHome } from "@/components/dashboard/customer-home";
 import { ROLE_LABEL } from "@/lib/role-routing";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
+import { apiFetch } from "@/lib/api-client";
+import { formatDateTime, statusLabel, type OrderListItem } from "@/lib/order-ui";
 
 interface RoleDashboardProps {
   roleCode: RoleCodeType;
@@ -47,6 +52,8 @@ export interface NavItem {
   active?: boolean;
   badge?: string;
   href?: string;
+  query?: Record<string, string>;
+  excludeQuery?: Record<string, string>;
 }
 
 interface Metric {
@@ -61,8 +68,8 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Tổng quan", icon: LayoutDashboard, active: true, href: "/dashboard/admin" },
   { label: "Đơn hàng", icon: ClipboardList, href: "/dashboard/admin/orders" },
   { label: "Kho & tuyến", icon: MapPin, href: "/dashboard/admin/warehouses" },
-  { label: "Người dùng", icon: Users, href: "/dashboard/admin/users" },
-  { label: "Nhân viên giao hàng", icon: Truck, href: "/dashboard/admin/users?role=DELIVERY_STAFF" },
+  { label: "Người dùng", icon: Users, href: "/dashboard/admin/users", excludeQuery: { role: "DELIVERY_STAFF" } },
+  { label: "Nhân viên giao hàng", icon: Truck, href: "/dashboard/admin/users", query: { role: "DELIVERY_STAFF" } },
   { label: "Blockchain", icon: ShieldCheck },
   { label: "COD & Đối soát", icon: WalletCards, href: "/dashboard/admin/cod" },
   { label: "Phiếu nộp tiền", icon: Banknote, href: "/dashboard/admin/handovers" },
@@ -152,6 +159,13 @@ function Brand(): React.JSX.Element {
   );
 }
 
+function navHref(item: NavItem): string | undefined {
+  if (!item.href) return undefined;
+  const url = new URL(item.href, "http://localhost");
+  Object.entries(item.query ?? {}).forEach(([key, value]) => url.searchParams.set(key, value));
+  return `${url.pathname}${url.search}`;
+}
+
 export function DesktopSidebar({
   navItems,
   roleCode,
@@ -161,6 +175,8 @@ export function DesktopSidebar({
   roleCode: RoleCodeType;
   activeLabel?: string;
 }): React.JSX.Element {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const content = (
     <>
       <div className="shrink-0 px-5 pb-5 pt-6">
@@ -172,7 +188,21 @@ export function DesktopSidebar({
         <nav className="mt-3 space-y-1" aria-label={`Điều hướng ${ROLE_LABEL[roleCode]}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = activeLabel ? item.label === activeLabel : item.active;
+            const itemUrl = item.href ? new URL(item.href, "http://localhost") : null;
+            const matchesPath = itemUrl
+              ? pathname === itemUrl.pathname
+                || (itemUrl.pathname !== "/dashboard/admin"
+                  && itemUrl.pathname !== "/dashboard/dispatcher"
+                  && itemUrl.pathname !== "/dashboard/warehouse"
+                  && pathname.startsWith(`${itemUrl.pathname}/`))
+              : false;
+            const matchesQuery = itemUrl
+              ? Object.entries(item.query ?? {}).every(([key, value]) => searchParams.get(key) === value)
+                && Object.entries(item.excludeQuery ?? {}).every(([key, value]) => searchParams.get(key) !== value)
+              : false;
+            const active = item.href
+              ? Boolean(matchesPath && matchesQuery)
+              : Boolean(activeLabel && item.label === activeLabel);
             const content = (
               <div
                 key={item.label}
@@ -191,7 +221,7 @@ export function DesktopSidebar({
                 ) : item.label === "Thông báo" ? <NotificationUnreadBadge /> : null}
               </div>
             );
-            return item.href ? <Link key={item.label} href={item.href} className="block">{content}</Link> : content;
+            return item.href ? <Link key={item.label} href={navHref(item) ?? item.href} className="block">{content}</Link> : content;
           })}
         </nav>
       </div>
@@ -292,23 +322,71 @@ function DesktopHome({
   );
 }
 
-const ADMIN_ORDERS = [
-  { code: "ORD-2026-00124", sender: "Công ty Minh Anh", route: "Hà Nội → Đà Nẵng", status: "Đang giao", tone: "warning" as const, time: "09:42" },
-  { code: "ORD-2026-00123", sender: "Nguyễn Hoàng Nam", route: "TP. HCM → Cần Thơ", status: "Đã giao", tone: "success" as const, time: "09:18" },
-  { code: "ORD-2026-00122", sender: "Lê Thu Hà", route: "Hải Phòng → Hà Nội", status: "Chờ phân công", tone: "muted" as const, time: "08:56" },
-  { code: "ORD-2026-00121", sender: "Nội thất An Khang", route: "Đà Nẵng → Huế", status: "Có cảnh báo", tone: "danger" as const, time: "08:31" },
-];
+interface AdminStats {
+  inProgressOrders: number;
+  deliveredOrders: number;
+  system?: { activeUsers?: number; openAlerts?: number };
+}
+
+interface AdminAlert {
+  id: string;
+  title: string;
+  message: string;
+  detected_at: string;
+  status: string;
+  orders: { tracking_code: string } | { tracking_code: string }[] | null;
+}
+
+interface AdminOrdersResponse {
+  items: OrderListItem[];
+  total: number;
+}
+
+function relationValue<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
 
 function AdminHome(props: RoleDashboardProps): React.JSX.Element {
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [orders, setOrders] = useState<OrderListItem[]>([]);
+  const [alerts, setAlerts] = useState<AdminAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadDashboard = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [statsResult, ordersResult, alertsResult] = await Promise.all([
+        apiFetch<AdminStats>("/api/stats?period=day"),
+        apiFetch<AdminOrdersResponse>("/api/orders?page=1&pageSize=4"),
+        apiFetch<{ items: AdminAlert[] }>("/api/alerts?page=1&status=open"),
+      ]);
+      setStats(statsResult);
+      setOrders(ordersResult.items);
+      setAlerts(alertsResult.items.slice(0, 4));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không tải được dữ liệu Dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
   const metrics: Metric[] = [
-    { label: "Đơn đang xử lý", value: "1.248", detail: "+8,4% so với hôm qua", icon: ClipboardList, tone: "yellow" },
-    { label: "Đơn đã giao", value: "1.892", detail: "96,2% đúng thời gian", icon: PackageCheck, tone: "green" },
-    { label: "Tài khoản hoạt động", value: "384", detail: "12 tài khoản mới tuần này", icon: Users, tone: "blue" },
-    { label: "Cảnh báo cần xử lý", value: "13", detail: "4 cảnh báo mức nghiêm trọng", icon: AlertTriangle, tone: "red" },
+    { label: "Đơn đang xử lý", value: stats ? String(stats.inProgressOrders) : "—", detail: loading ? "Đang tải..." : "Trong 30 ngày gần đây", icon: ClipboardList, tone: "yellow" },
+    { label: "Đơn đã giao", value: stats ? String(stats.deliveredOrders) : "—", detail: loading ? "Đang tải..." : "Trong 30 ngày gần đây", icon: PackageCheck, tone: "green" },
+    { label: "Tài khoản hoạt động", value: stats?.system?.activeUsers !== undefined ? String(stats.system.activeUsers) : "—", detail: loading ? "Đang tải..." : "Tài khoản có trạng thái active", icon: Users, tone: "blue" },
+    { label: "Cảnh báo cần xử lý", value: stats?.system?.openAlerts !== undefined ? String(stats.system.openAlerts) : "—", detail: loading ? "Đang tải..." : "Cảnh báo đang mở", icon: AlertTriangle, tone: "red" },
   ];
 
   return (
     <DesktopHome {...props} navItems={ADMIN_NAV} metrics={metrics}>
+      {error ? <p role="alert" className="mb-5 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.85fr)]">
         <section className="rounded-dt border border-dt-border bg-dt-panel p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -316,9 +394,9 @@ function AdminHome(props: RoleDashboardProps): React.JSX.Element {
               <p className="text-sm font-semibold">Đơn hàng gần đây</p>
               <p className="mt-1 text-[10px] text-dt-muted">Tổng hợp hoạt động mới nhất trên toàn hệ thống</p>
             </div>
-            <button type="button" className="flex items-center gap-1.5 rounded-md border border-dt-border px-3 py-2 text-[10px] text-dt-muted hover:text-dt-text">
+            <Link href="/dashboard/admin/orders" className="flex items-center gap-1.5 rounded-md border border-dt-border px-3 py-2 text-[10px] text-dt-muted hover:text-dt-text">
               Xem tất cả <ArrowUpRight size={13} strokeWidth={1.8} />
-            </button>
+            </Link>
           </div>
           <div className="mt-5 overflow-x-auto">
             <table className="w-full min-w-[620px] border-collapse text-left">
@@ -332,18 +410,29 @@ function AdminHome(props: RoleDashboardProps): React.JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {ADMIN_ORDERS.map((order) => (
-                  <tr key={order.code} className="border-b border-dt-border/70 last:border-0">
-                    <td className="py-4 text-[11px] font-medium text-dt-yellow">{order.code}</td>
-                    <td className="py-4 text-[11px] text-dt-text">{order.sender}</td>
-                    <td className="py-4 text-[11px] text-dt-muted">{order.route}</td>
-                    <td className="py-4"><StatusPill tone={order.tone}>{order.status}</StatusPill></td>
-                    <td className="py-4 text-right text-[10px] text-dt-muted">{order.time}</td>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-[12px] text-dt-muted">Đang tải đơn hàng...</td>
                   </tr>
-                ))}
+                ) : orders.map((order) => {
+                  const sender = relationValue(order.sender);
+                  const pickup = relationValue(order.pickup_warehouse);
+                  const delivery = relationValue(order.delivery_warehouse);
+                  const status = relationValue(order.order_statuses);
+                  return (
+                  <tr key={order.id} className="border-b border-dt-border/70 last:border-0">
+                    <td className="py-4 text-[11px] font-medium text-dt-yellow"><Link href={`/dashboard/admin/orders/${order.id}`} className="hover:underline">{order.tracking_code}</Link></td>
+                    <td className="py-4 text-[11px] text-dt-text">{sender?.name ?? "—"}</td>
+                    <td className="py-4 text-[11px] text-dt-muted">{pickup?.province ?? "—"} → {delivery?.province ?? "—"}</td>
+                    <td className="py-4"><StatusPill tone={status?.code === "DELIVERED" ? "success" : status?.code === "DELIVERY_FAILED" || status?.code === "CANCELLED" ? "danger" : "warning"}>{statusLabel(status)}</StatusPill></td>
+                    <td className="py-4 text-right text-[10px] text-dt-muted">{formatDateTime(order.created_at)}</td>
+                  </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {!loading && orders.length === 0 ? <p className="mt-4 text-[12px] text-dt-muted">Chưa có đơn hàng trong dữ liệu.</p> : null}
         </section>
 
         <div className="space-y-6">
@@ -355,20 +444,9 @@ function AdminHome(props: RoleDashboardProps): React.JSX.Element {
               </div>
               <ShieldCheck className="text-dt-green" size={19} strokeWidth={1.8} />
             </div>
-            <div className="mt-5 flex items-center gap-3 rounded-md border border-dt-green/20 bg-dt-green/5 p-3">
-              <CheckCircle2 className="shrink-0 text-dt-green" size={17} strokeWidth={1.8} />
-              <div>
-                <p className="text-[11px] font-medium text-dt-green">Mạng lưới đang đồng bộ</p>
-                <p className="mt-1 text-[10px] text-dt-muted">1.248 sự kiện đã xác minh hôm nay</p>
-              </div>
-            </div>
-            <div className="mt-4 space-y-3">
-              {["ORD-2026-00124", "ORD-2026-00123", "ORD-2026-00120"].map((code, index) => (
-                <div key={code} className="flex items-center justify-between gap-3 text-[10px]">
-                  <span className="flex min-w-0 items-center gap-2 text-dt-muted"><FileCheck2 size={13} className="text-dt-yellow" /> <span className="truncate">{code}</span></span>
-                  <span className="shrink-0 text-dt-green">{index === 2 ? "2 phút trước" : `${index + 1}0 phút trước`}</span>
-                </div>
-              ))}
+            <div className="mt-5 rounded-md border border-dt-border bg-dt-panel2 p-3">
+              <p className="text-[11px] font-medium text-dt-muted">Chưa có API tổng hợp trạng thái Blockchain cho Dashboard.</p>
+              <Link href="/dashboard/admin/audit-logs" className="mt-2 inline-flex items-center gap-1 text-[10px] text-dt-yellow hover:underline">Xem nhật ký thao tác <ArrowUpRight size={12} /></Link>
             </div>
           </section>
           <section className="rounded-dt border border-dt-border bg-dt-panel p-5">
@@ -377,14 +455,15 @@ function AdminHome(props: RoleDashboardProps): React.JSX.Element {
               <AlertTriangle className="text-dt-yellow" size={18} strokeWidth={1.8} />
             </div>
             <div className="mt-4 space-y-3">
-              <div className="rounded-md border border-dt-red/20 bg-dt-red/5 p-3">
-                <p className="text-[11px] font-medium text-red-200">4 đơn giao trễ</p>
-                <p className="mt-1 text-[10px] text-dt-muted">Cần điều phối lại trước 10:00</p>
-              </div>
-              <div className="rounded-md border border-dt-yellow/20 bg-dt-yellow/5 p-3">
-                <p className="text-[11px] font-medium text-dt-yellow">9 tài khoản chờ xác minh</p>
-                <p className="mt-1 text-[10px] text-dt-muted">Kiểm tra trong mục Người dùng</p>
-              </div>
+              {loading ? <p className="text-[12px] text-dt-muted">Đang tải cảnh báo...</p> : alerts.map((alert) => {
+                const order = relationValue(alert.orders);
+                return <div key={alert.id} className="rounded-md border border-dt-yellow/20 bg-dt-yellow/5 p-3">
+                  <p className="text-[11px] font-medium text-dt-yellow">{alert.title}</p>
+                  <p className="mt-1 text-[10px] text-dt-muted">{alert.message}{order?.tracking_code ? ` · ${order.tracking_code}` : ""}</p>
+                  <p className="mt-1 text-[10px] text-dt-muted">{formatDateTime(alert.detected_at)}</p>
+                </div>;
+              })}
+              {!loading && alerts.length === 0 ? <p className="text-[12px] text-dt-muted">Không có cảnh báo đang mở.</p> : null}
             </div>
           </section>
         </div>

@@ -31,6 +31,17 @@ function isoDate(date: Date): string {
   return new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("vi-VN").format(value);
+}
+
+function formatBucketKey(key: string, period: "day" | "month"): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return period === "day"
+    ? `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`
+    : `${String(month).padStart(2, "0")}/${year}`;
+}
+
 function Metric({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "red" | "green" | "yellow" }): React.JSX.Element {
   const color = tone === "red" ? "text-red-300" : tone === "green" ? "text-dt-green" : tone === "yellow" ? "text-dt-yellow" : "text-dt-text";
   return <article className="rounded-dt border border-dt-border bg-dt-panel p-4">
@@ -52,6 +63,11 @@ export function StatsPanel({ heading = "Thống kê & báo cáo", subtitle = "S�
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    if (from > to) {
+      setError("Ngày bắt đầu không được sau ngày kết thúc.");
+      setLoading(false);
+      return;
+    }
     try {
       setData(await apiFetch<StatsResult>(`/api/stats?period=${period}&from=${from}&to=${to}`));
     } catch (caught) {
@@ -81,47 +97,54 @@ export function StatsPanel({ heading = "Thống kê & báo cáo", subtitle = "S�
         <TextField label="Đến ngày" type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} />
       </div>
     </Card>
+    <p className="mt-3 text-[11px] text-dt-muted">
+      Các chỉ số đơn hàng và biểu đồ dùng đúng khoảng thời gian đã chọn. Tài khoản hoạt động, cảnh báo mở và COD chờ đối soát là số liệu hiện tại của toàn hệ thống.
+    </p>
     {error ? <p role="alert" className="mt-4 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
     {data ? <>
       <section className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số tổng quan">
-        <Metric label="Tổng số đơn" value={String(data.totalOrders)} hint={`${data.inProgressOrders} đang xử lý`} />
-        <Metric label="Giao thành công" value={String(data.deliveredOrders)} tone="green" hint={`${data.successRate}% trên tổng đơn · ${data.completionSuccessRate}% trên đơn đã có kết quả`} />
-        <Metric label="Thất bại / hoàn hàng" value={`${data.failedOrders} / ${data.returnedOrders}`} tone="yellow" hint={`${data.cancelledOrders} đơn đã hủy`} />
-        <Metric label="Đơn trễ hạn" value={String(data.lateOrders)} tone={data.lateOrders > 0 ? "red" : undefined} hint="Quá thời gian giao dự kiến, chưa hoàn tất" />
-        {data.system?.activeUsers !== undefined ? <Metric label="Tài khoản hoạt động" value={String(data.system.activeUsers)} /> : null}
-        {data.system?.openAlerts !== undefined ? <Metric label="Cảnh báo đang mở" value={String(data.system.openAlerts)} tone={data.system.openAlerts > 0 ? "red" : undefined} /> : null}
+        <Metric label="Tổng số đơn" value={formatNumber(data.totalOrders)} hint={`${formatNumber(data.inProgressOrders)} đang xử lý`} />
+        <Metric label="Giao thành công" value={formatNumber(data.deliveredOrders)} tone="green" hint={`${data.successRate}% trên tổng đơn · ${data.completionSuccessRate}% trên đơn đã có kết quả`} />
+        <Metric label="Thất bại / hoàn hàng" value={`${formatNumber(data.failedOrders)} / ${formatNumber(data.returnedOrders)}`} tone="yellow" hint={`${formatNumber(data.cancelledOrders)} đơn đã hủy`} />
+        <Metric label="Đơn trễ hạn" value={formatNumber(data.lateOrders)} tone={data.lateOrders > 0 ? "red" : undefined} hint="Quá thời gian giao dự kiến, chưa hoàn tất" />
+        {data.system?.activeUsers !== undefined ? <Metric label="Tài khoản hoạt động" value={formatNumber(data.system.activeUsers)} /> : null}
+        {data.system?.openAlerts !== undefined ? <Metric label="Cảnh báo đang mở" value={formatNumber(data.system.openAlerts)} tone={data.system.openAlerts > 0 ? "red" : undefined} /> : null}
         {data.system?.codAwaitingReconciliation !== undefined ? <Metric label="COD chờ đối soát" value={formatVnd(data.system.codAwaitingReconciliation)} tone="yellow" /> : null}
       </section>
       {data.truncated ? <p className="mt-3 text-[11px] text-dt-yellow">Số liệu bị giới hạn ở mức tối đa; hãy thu hẹp khoảng thời gian.</p> : null}
 
       <Card className="mt-5">
         <CardLabel>{period === "day" ? "Đơn theo ngày tạo" : "Đơn theo tháng tạo"}</CardLabel>
-        <div className="mt-3 overflow-x-auto">
+        {loading ? <p className="mt-3 text-[12px] text-dt-muted">Đang cập nhật dữ liệu...</p> : null}
+        {data.series.length === 0 ? <p className="mt-3 text-[12px] text-dt-muted">Không có dữ liệu đơn hàng trong khoảng thời gian này.</p> : null}
+        {data.series.length > 0 ? <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-[11px]">
             <thead className="border-b border-dt-border text-[10px] uppercase tracking-wide text-dt-muted">
               <tr><th className="py-2 font-medium">{period === "day" ? "Ngày" : "Tháng"}</th><th className="py-2 font-medium">Đã tạo</th><th className="py-2 font-medium">Thành công</th><th className="py-2 font-medium">Thất bại</th><th className="py-2 font-medium">Hoàn</th><th className="py-2 font-medium">Trễ hạn</th><th className="w-1/3 py-2 font-medium" /></tr>
             </thead>
             <tbody>
               {data.series.map((bucket) => <tr key={bucket.key} className="border-b border-dt-border/70 last:border-0">
-                <td className="py-2 text-dt-muted">{bucket.key}</td>
-                <td className="py-2">{bucket.created}</td>
-                <td className="py-2 text-dt-green">{bucket.delivered}</td>
-                <td className="py-2">{bucket.failed}</td>
-                <td className="py-2">{bucket.returned}</td>
-                <td className={`py-2 ${bucket.late > 0 ? "text-red-300" : ""}`}>{bucket.late}</td>
+                <td className="py-2 text-dt-muted">{formatBucketKey(bucket.key, period)}</td>
+                <td className="py-2">{formatNumber(bucket.created)}</td>
+                <td className="py-2 text-dt-green">{formatNumber(bucket.delivered)}</td>
+                <td className="py-2">{formatNumber(bucket.failed)}</td>
+                <td className="py-2">{formatNumber(bucket.returned)}</td>
+                <td className={`py-2 ${bucket.late > 0 ? "text-red-300" : ""}`}>{formatNumber(bucket.late)}</td>
                 <td className="py-2"><div className="h-2 rounded bg-dt-panel2"><div className="h-2 rounded bg-dt-yellow" style={{ width: `${(bucket.created / max) * 100}%` }} /></div></td>
               </tr>)}
             </tbody>
           </table>
-        </div>
+        </div> : null}
       </Card>
 
       <Card className="mt-5">
         <CardLabel>Phân bố theo trạng thái</CardLabel>
-        <ul className="mt-3 grid gap-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
-          {Object.entries(data.byStatus).sort((a, b) => b[1] - a[1]).map(([code, count]) => <li key={code} className="flex justify-between rounded-md bg-dt-panel2 px-3 py-2"><span className="text-dt-muted">{statusLabel({ code, name: code })}</span><span className="font-medium">{count}</span></li>)}
-        </ul>
+        {Object.keys(data.byStatus).length === 0
+          ? <p className="mt-3 text-[12px] text-dt-muted">Không có trạng thái đơn hàng trong khoảng thời gian này.</p>
+          : <ul className="mt-3 grid gap-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+            {Object.entries(data.byStatus).sort((a, b) => b[1] - a[1]).map(([code, count]) => <li key={code} className="flex justify-between rounded-md bg-dt-panel2 px-3 py-2"><span className="text-dt-muted">{statusLabel({ code, name: code })}</span><span className="font-medium">{formatNumber(count)}</span></li>)}
+          </ul>}
       </Card>
-    </> : loading ? <p className="mt-5 text-[12px] text-dt-muted">Đang tải thống kê…</p> : null}
+    </> : loading ? <p className="mt-5 text-[12px] text-dt-muted">Đang tải thống kê…</p> : !error ? <p className="mt-5 text-[12px] text-dt-muted">Chưa có dữ liệu thống kê.</p> : null}
   </div>;
 }
