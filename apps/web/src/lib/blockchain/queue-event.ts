@@ -2,7 +2,13 @@ import { after } from "next/server";
 import { BlockchainTransactionStatus, type BlockchainEventType } from "@delivery/shared";
 import type { Json } from "@delivery/database";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
-import { actorAddressForUser, hashEventPayload, recordDeliveryEventOnChain } from "./record-event";
+import {
+  actorAddressForUser,
+  BlockchainTransactionOutcomeUnknownError,
+  BlockchainTransactionRevertedError,
+  hashEventPayload,
+  recordDeliveryEventOnChain,
+} from "./record-event";
 
 export interface QueueBlockchainEventParams {
   orderId: string;
@@ -14,12 +20,84 @@ export interface QueueBlockchainEventParams {
   payload: Record<string, unknown>;
 }
 
+export type QueueBlockchainEventResult =
+  | { status: "queued"; eventId: string }
+  | { status: "disabled" }
+  | { status: "enqueue_failed"; error: string };
+
 // Các giao dịch dùng chung một ví operator; gửi song song sẽ tranh nonce.
 let chainQueue: Promise<void> = Promise.resolve();
 
-function isBlockchainWriteEnabled(): boolean {
+export function isBlockchainWriteEnabled(): boolean {
   // Tắt mặc định cho tới GĐ5 Blockchain; bật bằng BLOCKCHAIN_WRITE_ENABLED=true.
   return process.env.BLOCKCHAIN_WRITE_ENABLED === "true";
+}
+
+export interface DispatchBlockchainEventParams {
+  eventId: string;
+  trackingCode: string;
+  eventType: BlockchainEventType;
+  performedBy: string;
+  eventDataHash: string;
+}
+
+/**
+ * Dispatches an event that has already been durably inserted into
+ * blockchain_events (for example by a database transaction).
+ */
+export async function dispatchBlockchainEvent(
+  params: DispatchBlockchainEventParams,
+): Promise<boolean> {
+  if (!isBlockchainWriteEnabled()) return false;
+
+  const job = async (): Promise<void> => {
+    try {
+      const client = getSupabaseServiceClient();
+      const result = await recordDeliveryEventOnChain({
+        trackingCode: params.trackingCode,
+        eventType: params.eventType,
+        performedByAddress: actorAddressForUser(params.performedBy),
+        eventDataHash: params.eventDataHash,
+      });
+      const { error } = await client
+        .from("blockchain_events")
+        .update({
+          tx_status: BlockchainTransactionStatus.CONFIRMED,
+          transaction_hash: result.transactionHash,
+          block_number: result.blockNumber,
+          chain_timestamp: result.chainTimestamp,
+        })
+        .eq("id", params.eventId);
+      if (error) console.error("Updating confirmed blockchain event failed", { eventId: params.eventId, error });
+    } catch (chainError) {
+      console.error("recordDeliveryEventOnChain failed", { eventId: params.eventId, chainError });
+      if (chainError instanceof BlockchainTransactionOutcomeUnknownError) {
+        console.error("Leaving blockchain event pending until its outcome can be reconciled", { eventId: params.eventId });
+        return;
+      }
+      if (!(chainError instanceof BlockchainTransactionRevertedError)) {
+        console.error("Leaving blockchain event pending because dispatch failed before a definite outcome", { eventId: params.eventId });
+        return;
+      }
+
+      const client = getSupabaseServiceClient();
+      const { error } = await client
+        .from("blockchain_events")
+        .update({ tx_status: BlockchainTransactionStatus.FAILED })
+        .eq("id", params.eventId);
+      if (error) console.error("Marking blockchain event failed", { eventId: params.eventId, error });
+    }
+  };
+
+  try {
+    after(() => chainQueue);
+  } catch (error) {
+    console.error("Scheduling blockchain event failed", { eventId: params.eventId, error });
+    return false;
+  }
+
+  chainQueue = chainQueue.then(job, job);
+  return true;
 }
 
 /**
@@ -28,8 +106,10 @@ function isBlockchainWriteEnabled(): boolean {
  * luồng nghiệp vụ; lỗi chain chỉ đánh dấu failed để xử lý lại, không làm hỏng
  * thao tác giao nhận đã lưu.
  */
-export async function queueBlockchainEvent(params: QueueBlockchainEventParams): Promise<void> {
-  if (!isBlockchainWriteEnabled()) return;
+export async function queueBlockchainEvent(
+  params: QueueBlockchainEventParams,
+): Promise<QueueBlockchainEventResult> {
+  if (!isBlockchainWriteEnabled()) return { status: "disabled" };
 
   const supabase = getSupabaseServiceClient();
   const { payload, hash } = hashEventPayload({
@@ -54,36 +134,29 @@ export async function queueBlockchainEvent(params: QueueBlockchainEventParams): 
     .single();
   if (error || !row) {
     console.error("queueBlockchainEvent insert failed", error);
-    return;
+    return { status: "enqueue_failed", error: error?.message ?? "No event row was returned" };
   }
 
-  const job = async (): Promise<void> => {
-    const client = getSupabaseServiceClient();
-    try {
-      const result = await recordDeliveryEventOnChain({
-        trackingCode: params.trackingCode,
-        eventType: params.eventType,
-        performedByAddress: actorAddressForUser(params.performedBy),
-        eventDataHash: hash,
-      });
-      await client
-        .from("blockchain_events")
-        .update({
-          tx_status: BlockchainTransactionStatus.CONFIRMED,
-          transaction_hash: result.transactionHash,
-          block_number: result.blockNumber,
-          chain_timestamp: result.chainTimestamp,
-        })
-        .eq("id", row.id);
-    } catch (chainError) {
-      console.error("recordDeliveryEventOnChain failed", { eventId: row.id, chainError });
-      await client
-        .from("blockchain_events")
-        .update({ tx_status: BlockchainTransactionStatus.FAILED })
-        .eq("id", row.id);
+  const scheduled = await dispatchBlockchainEvent({
+    eventId: row.id,
+    trackingCode: params.trackingCode,
+    eventType: params.eventType,
+    performedBy: params.performedBy,
+    eventDataHash: hash,
+  });
+  if (!scheduled) {
+    const { error: updateError } = await supabase
+      .from("blockchain_events")
+      .update({ tx_status: BlockchainTransactionStatus.FAILED })
+      .eq("id", row.id)
+      .eq("tx_status", BlockchainTransactionStatus.PENDING);
+    if (updateError) {
+      console.error("Could not mark unscheduled Blockchain event failed", { eventId: row.id, updateError });
     }
-  };
-
-  chainQueue = chainQueue.then(job, job);
-  after(() => chainQueue);
+    return {
+      status: "enqueue_failed",
+      error: "Could not register the post-response blockchain dispatcher",
+    };
+  }
+  return { status: "queued", eventId: row.id };
 }

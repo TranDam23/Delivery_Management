@@ -25,6 +25,7 @@ import { getVisibleOrderIds } from "@/lib/order-access";
 const createOrderSchema = z.object({
   sender_id: z.string().uuid(),
   receiver_id: z.string().uuid(),
+  receiver_is_sender: z.boolean().default(false),
   pickup_address_id: z.string().uuid(),
   delivery_address_id: z.string().uuid(),
   service_type: z.enum(["standard", "express", "same_day"]).default("standard"),
@@ -67,6 +68,21 @@ function generateTrackingCode(): string {
   return `DH${ymd}${suffix}`;
 }
 
+function dateOnlyBoundary(value: string | null, endExclusive = false): string | null | undefined {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return undefined;
+  }
+  const utcBoundary = Date.UTC(year, month - 1, day + (endExclusive ? 1 : 0));
+  return new Date(utcBoundary - 7 * 60 * 60 * 1000).toISOString();
+}
+
 interface OrderWarehouseCandidate {
   id: string;
   code: string;
@@ -100,7 +116,13 @@ export async function GET(request: NextRequest) {
       : 20;
   const statusCode = searchParams.get("status");
   const searchTerm = searchParams.get("q")?.trim() || null;
+  const fromDate = searchParams.get("from");
+  const toDate = searchParams.get("to");
+  const createdFrom = dateOnlyBoundary(fromDate);
+  const createdBefore = dateOnlyBoundary(toDate, true);
   if (searchTerm && searchTerm.length > 100) return fail("Từ khóa tìm kiếm không được vượt quá 100 ký tự", 400);
+  if (createdFrom === undefined || createdBefore === undefined) return fail("Ngày lọc đơn hàng không hợp lệ", 400);
+  if (fromDate && toDate && fromDate > toDate) return fail("Khoảng ngày lọc đơn hàng không hợp lệ", 400);
   const validStatusCodes: string[] = Object.values(OrderStatusCode);
   if (statusCode && !validStatusCodes.includes(statusCode)) {
     return fail("Trạng thái đơn hàng không hợp lệ", 400);
@@ -129,19 +151,28 @@ export async function GET(request: NextRequest) {
     .order("id", { ascending: false });
 
   const visible = await getVisibleOrderIds(supabase, auth, orderDirection);
-  if (visible.error) return fail(visible.error, visible.status ?? 500);
+  if (visible.error) {
+    if (visible.status && visible.status < 500) return fail(visible.error, visible.status);
+    console.error("Resolving order list access failed", { roleCode: auth.roleCode, error: visible.error });
+    return fail("Không thể kiểm tra phạm vi đơn hàng.", 500);
+  }
   if (visible.ids) {
     if (visible.ids.length === 0) return ok({ items: [], total: 0, page, pageSize });
   }
 
-  const { data: matchingRows, error: matchingError } = await supabase.rpc("search_orders_page", {
+  const { data: matchingRows, error: matchingError } = await supabase.rpc("search_orders_page_filtered", {
     p_visible_order_ids: visible.ids,
     p_status_code: statusCode || null,
     p_search: searchTerm,
+    p_created_from: createdFrom,
+    p_created_before: createdBefore,
     p_page: page,
     p_page_size: pageSize,
   });
-  if (matchingError) return fail(matchingError.message, 500);
+  if (matchingError) {
+    console.error("Searching order page failed", { code: matchingError.code, message: matchingError.message });
+    return fail("Không thể tải danh sách đơn hàng.", 500);
+  }
   const total = Number(matchingRows?.[0]?.total_count ?? 0);
   const matchingIds = (matchingRows ?? [])
     .map((row) => row.order_id)
@@ -150,7 +181,10 @@ export async function GET(request: NextRequest) {
   query = query.in("id", matchingIds);
 
   const { data, error } = await query;
-  if (error) return fail(error.message, 500);
+  if (error) {
+    console.error("Loading order page details failed", { code: error.code, message: error.message });
+    return fail("Không thể tải danh sách đơn hàng.", 500);
+  }
 
   return ok({ items: data, total, page, pageSize });
 }
@@ -205,6 +239,9 @@ export async function POST(request: NextRequest) {
     if (sender.user_id !== auth.userId || receiver.user_id !== auth.userId) {
       return fail("Khách hàng chỉ được dùng contact trong sổ địa chỉ của mình", 403);
     }
+  }
+  if (parsed.data.receiver_is_sender && auth.roleCode !== RoleCode.CUSTOMER) {
+    return fail("Chỉ khách hàng mới có thể chỉ định mình là người nhận.", 403);
   }
 
   const addressIds = Array.from(new Set([parsed.data.pickup_address_id, parsed.data.delivery_address_id]));
@@ -270,6 +307,8 @@ export async function POST(request: NextRequest) {
     qr_code: trackingCode,
     sender_id: parsed.data.sender_id,
     receiver_id: parsed.data.receiver_id,
+    sender_user_id: auth.roleCode === RoleCode.CUSTOMER ? auth.userId : null,
+    receiver_user_id: parsed.data.receiver_is_sender ? auth.userId : null,
     pickup_address_id: parsed.data.pickup_address_id,
     delivery_address_id: parsed.data.delivery_address_id,
     pickup_warehouse_id: pickupWarehouse.id,
@@ -304,6 +343,7 @@ export async function POST(request: NextRequest) {
       declared_value: item.declared_value ?? null,
       note: item.note?.trim() || null,
     })),
+    ...(parsed.data.receiver_is_sender ? { receiver_is_sender: true } : {}),
   };
   const requestHash = createHash("sha256").update(JSON.stringify(normalizedRequest)).digest("hex");
 

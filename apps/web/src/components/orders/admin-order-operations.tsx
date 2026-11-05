@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BlockchainEventType,
   OrderStatusCode,
@@ -8,7 +8,7 @@ import {
   ShipmentLegType,
 } from "@delivery/shared";
 import { apiFetch } from "@/lib/api-client";
-import { formatDateTime } from "@/lib/order-ui";
+import { formatDateTime, formatVnd } from "@/lib/order-ui";
 import { legStatusLabel, legTypeLabel } from "@/lib/shipment-routing";
 import { ProofPhotoInput } from "@/components/delivery/proof-photo-input";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,10 @@ interface RouteLeg {
 interface RouteItem {
   order: { id: string; order_statuses: { code: string } | null };
   legs: RouteLeg[];
+}
+
+interface OrderDetailResponse {
+  order: { cod_amount: number };
 }
 
 interface AdminOrderOperationsProps {
@@ -99,15 +103,17 @@ function statusActions(leg: RouteLeg, orderStatus: string): StatusAction[] {
 
 export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperationsProps): React.JSX.Element {
   const [route, setRoute] = useState<RouteItem | null>(null);
+  const [codAmount, setCodAmount] = useState<number | null>(null);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<Record<string, string>>({});
   const [selectedAction, setSelectedAction] = useState<Record<string, string>>({});
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
-  const [codCollected, setCodCollected] = useState(false);
+  const [codCollected, setCodCollected] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const pendingEventRequestsRef = useRef(new Map<string, string>());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -115,11 +121,16 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
     setLoading(true);
     setError(null);
     try {
-      const [routes, staffRows] = await Promise.all([
+      const [routes, staffRows, orderDetails] = await Promise.all([
         apiFetch<RouteItem[]>(`/api/shipment-routes?order_id=${encodeURIComponent(orderId)}&status=planned`),
         apiFetch<StaffOption[]>("/api/delivery-staff"),
+        apiFetch<OrderDetailResponse>(`/api/orders/${encodeURIComponent(orderId)}`),
       ]);
+      if (!Number.isFinite(orderDetails.order.cod_amount)) {
+        throw new Error("Không đọc được số tiền COD của đơn hàng.");
+      }
       setRoute(routes[0] ?? null);
+      setCodAmount(orderDetails.order.cod_amount);
       setStaff(staffRows);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không tải được dữ liệu điều phối");
@@ -181,23 +192,42 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
       setError("Giao thành công cần đường dẫn ảnh bằng chứng.");
       return;
     }
+    if (
+      action === BlockchainEventType.DELIVERED
+      && !leg.is_return
+      && (codAmount ?? 0) > 0
+      && !codCollected[leg.id]
+    ) {
+      setError("Vui lòng xác nhận đã thu đủ COD trước khi hoàn tất giao hàng.");
+      return;
+    }
     setSaving(leg.id);
     setError(null);
     setNotice(null);
+    const body = {
+      status_code: action,
+      expected_attempt_no: leg.attempt_no,
+      note: note.trim() || undefined,
+      image_url: proofUrl ?? undefined,
+      cod_collected: action === BlockchainEventType.DELIVERED && codCollected[leg.id] ? true : undefined,
+    };
+    const fingerprint = JSON.stringify({ deliveryId: leg.delivery_id, ...body });
+    let idempotencyKey = pendingEventRequestsRef.current.get(fingerprint);
+    if (!idempotencyKey) {
+      idempotencyKey = crypto.randomUUID();
+      pendingEventRequestsRef.current.set(fingerprint, idempotencyKey);
+    }
     try {
       await apiFetch(`/api/deliveries/${leg.delivery_id}/events`, {
         method: "POST",
-        body: JSON.stringify({
-          status_code: action,
-          note: note.trim() || undefined,
-          image_url: proofUrl ?? undefined,
-          cod_collected: action === BlockchainEventType.DELIVERED && codCollected ? true : undefined,
-        }),
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(body),
       });
+      pendingEventRequestsRef.current.delete(fingerprint);
       setNotice(`Đã cập nhật trạng thái chặng ${leg.sequence_no}.`);
       setSelectedAction((current) => ({ ...current, [leg.id]: "" }));
       setProofUrl(null);
-      setCodCollected(false);
+      setCodCollected((current) => ({ ...current, [leg.id]: false }));
       setNote("");
       await load();
       onChanged();
@@ -241,13 +271,16 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
               </div>
               {actions.length > 0 ? (
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <SelectField label="Cập nhật trạng thái" value={selectedAction[leg.id] ?? ""} onChange={(event) => setSelectedAction((current) => ({ ...current, [leg.id]: event.target.value }))} disabled={saving === leg.id}>
+                  <SelectField label="Cập nhật trạng thái" value={selectedAction[leg.id] ?? ""} onChange={(event) => {
+                    setSelectedAction((current) => ({ ...current, [leg.id]: event.target.value }));
+                    setCodCollected((current) => ({ ...current, [leg.id]: false }));
+                  }} disabled={saving === leg.id}>
                     <option value="">Chọn trạng thái</option>
                     {actions.map((action) => <option key={action.code} value={action.code}>{action.label}</option>)}
                   </SelectField>
                   {selectedAction[leg.id] === BlockchainEventType.DELIVERED ? <ProofPhotoInput label="Ảnh bằng chứng" required value={proofUrl} onChange={setProofUrl} onUploadingChange={setProofUploading} /> : null}
                   <TextField label="Ghi chú" required={selectedAction[leg.id] === BlockchainEventType.PICKUP_FAILED} value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} disabled={saving === leg.id} />
-                  {selectedAction[leg.id] === BlockchainEventType.DELIVERED ? <label className="flex items-center gap-2 text-[12px] text-dt-muted"><input type="checkbox" checked={codCollected} onChange={(event) => setCodCollected(event.target.checked)} /> Đã thu đủ COD (nếu đơn có COD)</label> : null}
+                  {selectedAction[leg.id] === BlockchainEventType.DELIVERED && !leg.is_return && (codAmount ?? 0) > 0 ? <label className="flex items-center gap-2 text-[12px] text-dt-muted"><input type="checkbox" checked={codCollected[leg.id] ?? false} onChange={(event) => setCodCollected((current) => ({ ...current, [leg.id]: event.target.checked }))} /> Xác nhận đã thu đủ COD ({formatVnd(codAmount ?? 0)})</label> : null}
                   <div className="flex items-end"><Button onClick={() => void recordStatus(leg)} disabled={saving === leg.id || proofUploading}>{saving === leg.id ? "Đang lưu..." : "Cập nhật trạng thái"}</Button></div>
                 </div>
               ) : null}

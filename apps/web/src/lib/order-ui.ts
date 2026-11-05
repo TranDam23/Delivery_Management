@@ -114,6 +114,7 @@ export interface TrackingResult {
     event_type: string;
     transaction_hash: string | null;
     block_number: number | null;
+    tx_status: string;
     created_at: string;
   }>;
 }

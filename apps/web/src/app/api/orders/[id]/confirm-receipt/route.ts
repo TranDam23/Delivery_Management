@@ -1,10 +1,12 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { BlockchainEventType, normalizePhone, OrderStatusCode, RoleCode, ShipmentLegType } from "@delivery/shared";
+import { BlockchainEventType, OrderStatusCode, RoleCode, ShipmentLegType } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
-import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
+import { dispatchBlockchainEvent, isBlockchainWriteEnabled } from "@/lib/blockchain/queue-event";
+import { hashEventPayload } from "@/lib/blockchain/record-event";
 import { fail, ok } from "@/lib/api-response";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { checkOrderViewAccess } from "@/lib/order-access";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -14,16 +16,25 @@ const confirmReceiptSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
-interface Participant {
-  phone: string;
-}
-
 interface OrderConfirmationData {
   id: string;
   tracking_code: string;
-  receiver: Participant | Participant[] | null;
   order_statuses: { code: string } | { code: string }[] | null;
 }
+
+const confirmationResultSchema = z.object({
+  status: z.enum(["confirmed", "already_confirmed"]),
+  confirmed_at: z.string().datetime({ offset: true }),
+  event_id: z.string().uuid().nullable(),
+});
+
+const blockchainEventSchema = z.object({
+  id: z.string().uuid(),
+  event_data_hash: z.string(),
+  event_payload: z.record(z.string(), z.unknown()).nullable(),
+  performed_by: z.string().uuid().nullable(),
+  tx_status: z.string(),
+});
 
 /** POST /api/orders/:id/confirm-receipt — người nhận xác nhận đã nhận hàng. */
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -33,41 +44,43 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return fail("Chỉ người nhận mới được xác nhận đã nhận hàng", 403);
   }
 
-  const parsed = confirmReceiptSchema.safeParse(await request.json());
+  let requestBody: unknown;
+  try {
+    requestBody = await request.json();
+  } catch {
+    return fail("Dữ liệu xác nhận nhận hàng không hợp lệ", 400);
+  }
+  const parsed = confirmReceiptSchema.safeParse(requestBody);
   if (!parsed.success) return fail(parsed.error.message);
 
-  const { id: orderId } = await params;
+  const parsedOrderId = z.string().uuid().safeParse((await params).id);
+  if (!parsedOrderId.success) return fail("Mã đơn hàng không hợp lệ.", 400);
+  const orderId = parsedOrderId.data.toLowerCase();
   const supabase = getSupabaseServiceClient();
+  const access = await checkOrderViewAccess(supabase, auth, orderId);
+  if (!access.allowed) {
+    if (access.status >= 500) {
+      console.error("Checking receipt confirmation access failed", { orderId, error: access.error });
+      return fail("Không thể kiểm tra quyền xác nhận nhận hàng.", 500);
+    }
+    return fail(access.error, access.status);
+  }
+  if (!access.canConfirmReceipt) return fail("Tài khoản không được xác nhận nhận hàng cho đơn này", 403);
+
   const { data: orderRaw, error: orderError } = await supabase
     .from("orders")
-    .select("id, tracking_code, receiver:contacts!orders_receiver_id_fkey(phone), order_statuses(code)")
+    .select("id, tracking_code, order_statuses(code)")
     .eq("id", orderId)
     .maybeSingle();
-  if (orderError) return fail(orderError.message, 500);
+  if (orderError) {
+    console.error("Loading order for receipt confirmation failed", { orderId, error: orderError });
+    return fail("Không thể tải thông tin đơn hàng để xác nhận nhận hàng.", 500);
+  }
   if (!orderRaw) return fail("Order not found", 404);
-
   const order = orderRaw as OrderConfirmationData;
-  const receiver = Array.isArray(order.receiver) ? order.receiver[0] ?? null : order.receiver;
   const status = Array.isArray(order.order_statuses) ? order.order_statuses[0] ?? null : order.order_statuses;
   if (status?.code !== OrderStatusCode.DELIVERED) {
     return fail("Chỉ có thể xác nhận sau khi đơn hàng được cập nhật đã giao thành công", 409);
-  }
-
-  if (auth.roleCode !== RoleCode.ADMIN) {
-    const { data: guestOrder, error: guestError } = await supabase.from("guest_orders")
-      .select("order_id").eq("order_id", orderId).maybeSingle();
-    if (guestError) return fail(guestError.message, 500);
-    if (guestOrder) return fail("Đơn khách vãng lai chưa hỗ trợ xác nhận qua tài khoản chỉ khớp số điện thoại.", 403);
-    const { data: viewer, error: viewerError } = await supabase
-      .from("users")
-      .select("phone")
-      .eq("id", auth.userId)
-      .maybeSingle();
-    if (viewerError) return fail(viewerError.message, 500);
-    const viewerPhone = normalizePhone(typeof viewer?.phone === "string" ? viewer.phone : "");
-    // contact.user_id is the address-book owner, not the recipient account.
-    const isReceiver = viewerPhone.length > 0 && normalizePhone(receiver?.phone ?? "") === viewerPhone;
-    if (!isReceiver) return fail("Tài khoản không phải người nhận của đơn hàng", 403);
   }
 
   const { data: lastMileLeg, error: legError } = await supabase
@@ -79,7 +92,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     .order("sequence_no", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (legError) return fail(legError.message, 500);
+  if (legError) {
+    console.error("Loading last-mile leg for receipt confirmation failed", { orderId, error: legError });
+    return fail("Không thể tải chặng giao cuối để xác nhận nhận hàng.", 500);
+  }
   if (!lastMileLeg) return fail("Đơn hàng chưa có chặng giao cuối", 409);
 
   const { data: delivery, error: deliveryError } = await supabase
@@ -87,35 +103,148 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     .select("id, received_at")
     .eq("shipment_leg_id", lastMileLeg.id)
     .maybeSingle();
-  if (deliveryError) return fail(deliveryError.message, 500);
+  if (deliveryError) {
+    console.error("Loading delivery for receipt confirmation failed", { orderId, error: deliveryError });
+    return fail("Không thể tải thông tin giao nhận để xác nhận nhận hàng.", 500);
+  }
   if (!delivery) return fail("Chặng giao cuối chưa có bản ghi giao nhận", 409);
-  if (delivery.received_at) return ok({ confirmed_at: delivery.received_at, already_confirmed: true });
 
-  const confirmedAt = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from("deliveries")
-    .update({ received_at: confirmedAt })
-    .eq("id", delivery.id)
-    .is("received_at", null);
-  if (updateError) return fail(updateError.message, 500);
-
-  const { error: auditError } = await supabase.from("audit_logs").insert({
-    user_id: auth.userId,
-    action: "RECEIVER_CONFIRMED",
-    entity_type: "orders",
-    entity_id: orderId,
-    old_data: { received_at: null },
-    new_data: { received_at: confirmedAt, note: parsed.data.note ?? null },
-  });
-  if (auditError) return fail(auditError.message, 500);
-
-  await queueBlockchainEvent({
+  const confirmedAt = delivery.received_at ?? new Date().toISOString();
+  const blockchainEnabled = isBlockchainWriteEnabled();
+  const eventType = BlockchainEventType.RECEIVER_CONFIRMED;
+  const { payload: eventPayload, hash: eventDataHash } = hashEventPayload({
+    deliveryId: delivery.id,
+    confirmedAt,
+    note: parsed.data.note ?? null,
     orderId,
     trackingCode: order.tracking_code,
-    eventType: BlockchainEventType.RECEIVER_CONFIRMED,
+    eventType,
     performedBy: auth.userId,
-    payload: { deliveryId: delivery.id, confirmedAt, note: parsed.data.note ?? null },
   });
 
-  return ok({ confirmed_at: confirmedAt, already_confirmed: false });
+  const { data: rpcResult, error: confirmationError } = await supabase.rpc("confirm_receiver_delivery_atomic", {
+    p_order_id: orderId,
+    p_delivery_id: delivery.id,
+    p_user_id: auth.userId,
+    p_user_role: auth.roleCode,
+    p_confirmed_at: confirmedAt,
+    p_note: parsed.data.note ?? null,
+    p_enqueue_blockchain: blockchainEnabled,
+    p_event_type: blockchainEnabled ? eventType : null,
+    p_event_data_hash: blockchainEnabled ? eventDataHash : null,
+    p_event_payload: blockchainEnabled ? eventPayload : null,
+  });
+  if (confirmationError) {
+    if (confirmationError.message.includes("Forbidden")) return fail("Tài khoản không phải người nhận của đơn hàng", 403);
+    if (confirmationError.message.includes("Order is not delivered")) {
+      return fail("Chỉ có thể xác nhận sau khi đơn hàng được cập nhật đã giao thành công", 409);
+    }
+    console.error("Atomic receiver confirmation failed", confirmationError);
+    return fail("Không thể xác nhận nhận hàng. Vui lòng thử lại.", 500);
+  }
+  const parsedResult = confirmationResultSchema.safeParse(rpcResult);
+  if (!parsedResult.success) return fail("Database trả kết quả xác nhận nhận hàng không hợp lệ", 500);
+  const confirmation = parsedResult.data;
+
+  let blockchainStatus: "pending" | "confirmed" | "failed" | "disabled" = blockchainEnabled ? "pending" : "disabled";
+  let warning: string | undefined;
+
+  if (blockchainEnabled && confirmation.event_id) {
+    if (confirmation.status === "already_confirmed") {
+      const { data: existingEvent, error: eventError } = await supabase
+        .from("blockchain_events")
+        .select("id, event_data_hash, event_payload, performed_by, tx_status")
+        .eq("id", confirmation.event_id)
+        .maybeSingle();
+      if (eventError) {
+        warning = "Đã xác nhận nhận hàng nhưng không kiểm tra được trạng thái Blockchain event.";
+      } else if (existingEvent?.tx_status === "failed") {
+        const parsedEvent = blockchainEventSchema.safeParse(existingEvent);
+        const payload = parsedEvent.success ? parsedEvent.data.event_payload : null;
+        const verifiedPayload = payload ? hashEventPayload(payload) : null;
+        const payloadMatchesEvent = Boolean(
+          parsedEvent.success
+          && parsedEvent.data.performed_by
+          && payload
+          && payload.performedBy === parsedEvent.data.performed_by
+          && payload.orderId === orderId
+          && payload.trackingCode === order.tracking_code
+          && payload.eventType === eventType
+          && payload.deliveryId === delivery.id
+          && typeof payload.confirmedAt === "string"
+          && Date.parse(payload.confirmedAt) === Date.parse(confirmation.confirmed_at)
+          && verifiedPayload?.hash === parsedEvent.data.event_data_hash,
+        );
+        if (!parsedEvent.success || !payloadMatchesEvent || !parsedEvent.data.performed_by) {
+          warning = "Đã xác nhận nhận hàng nhưng event Blockchain thiếu dữ liệu gốc hợp lệ để retry.";
+          blockchainStatus = "failed";
+        } else {
+          const { data: claimedEvent, error: claimError } = await supabase
+            .from("blockchain_events")
+            .update({ tx_status: "pending" })
+            .eq("id", parsedEvent.data.id)
+            .eq("tx_status", "failed")
+            .select("id")
+            .maybeSingle();
+          if (claimError) {
+            warning = "Đã xác nhận nhận hàng nhưng không thể lên lịch thử lại Blockchain event.";
+            blockchainStatus = "failed";
+          } else if (claimedEvent) {
+            const scheduled = await dispatchBlockchainEvent({
+              eventId: claimedEvent.id,
+              trackingCode: order.tracking_code,
+              eventType,
+              performedBy: parsedEvent.data.performed_by,
+              eventDataHash: parsedEvent.data.event_data_hash,
+            });
+            if (!scheduled) {
+              const { error: resetError } = await supabase
+                .from("blockchain_events")
+                .update({ tx_status: "failed" })
+                .eq("id", claimedEvent.id)
+                .eq("tx_status", "pending");
+              if (resetError) console.error("Could not restore failed Blockchain event status", resetError);
+              warning = "Đã xác nhận nhận hàng; Blockchain event vẫn cần được đối soát.";
+              blockchainStatus = "failed";
+            }
+          } else {
+            blockchainStatus = "pending";
+          }
+        }
+      } else if (existingEvent?.tx_status === "confirmed") {
+        blockchainStatus = "confirmed";
+      } else if (!existingEvent) {
+        warning = "Đã xác nhận nhận hàng nhưng không tìm thấy Blockchain event để đối soát.";
+        blockchainStatus = "failed";
+      }
+    } else {
+      const scheduled = await dispatchBlockchainEvent({
+        eventId: confirmation.event_id,
+        trackingCode: order.tracking_code,
+        eventType,
+        performedBy: auth.userId,
+        eventDataHash,
+      });
+      if (!scheduled) {
+        const { error: markError } = await supabase
+          .from("blockchain_events")
+          .update({ tx_status: "failed" })
+          .eq("id", confirmation.event_id)
+          .eq("tx_status", "pending");
+        if (markError) console.error("Could not mark unscheduled Blockchain event failed", markError);
+        warning = "Đã xác nhận nhận hàng nhưng Blockchain event chưa được lên lịch và cần đối soát.";
+        blockchainStatus = "failed";
+      }
+    }
+  } else if (blockchainEnabled && confirmation.status === "already_confirmed") {
+    warning = "Đã xác nhận nhận hàng nhưng không có Blockchain event để thử lại; cần đối soát.";
+    blockchainStatus = "failed";
+  }
+
+  return ok({
+    confirmed_at: confirmation.confirmed_at,
+    already_confirmed: confirmation.status === "already_confirmed",
+    blockchain_status: blockchainStatus,
+    ...(warning ? { warning } : {}),
+  });
 }

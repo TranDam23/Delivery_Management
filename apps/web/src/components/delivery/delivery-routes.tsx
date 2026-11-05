@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockchainEventType, OrderStatusCode, ShipmentLegStatusCode, ShipmentLegType } from "@delivery/shared";
 import { apiFetch } from "@/lib/api-client";
-import { formatDateTime, formatVnd, relationValue } from "@/lib/order-ui";
+import { formatDateTime, formatVnd, relationValue, type TrackingResult } from "@/lib/order-ui";
 import { legStatusLabel } from "@/lib/shipment-routing";
 import { BottomSheet } from "./bottom-sheet";
 import {
@@ -106,6 +106,35 @@ export function DeliveryRoutesPage(): React.JSX.Element {
   const [codCollected, setCodCollected] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const pendingEventRequestsRef = useRef(new Map<string, { key: string; body: Promise<string> }>());
+
+  const handleQrResult = useCallback(async (value: string): Promise<void> => {
+    setCameraOpen(false);
+    setScanMode(true);
+    setError(null);
+    const scanned = value.trim();
+    let token: string | null = null;
+    try {
+      const url = new URL(scanned);
+      const match = /^\/tra-cuu\/(trk_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/?$/i.exec(url.pathname);
+      token = match?.[1] ?? null;
+    } catch {
+      // Older QR codes contain only the tracking code, not an absolute URL.
+    }
+
+    if (!token) {
+      setSearch(scanned.toUpperCase());
+      return;
+    }
+
+    try {
+      const result = await apiFetch<TrackingResult>(`/api/orders/track/${encodeURIComponent(token)}`);
+      setSearch(result.order.tracking_code.toUpperCase());
+    } catch (caught) {
+      setSearch("");
+      setError(caught instanceof Error ? caught.message : "Không thể tra cứu mã QR.");
+    }
+  }, []);
 
   const loadLegs = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -167,11 +196,38 @@ export function DeliveryRoutesPage(): React.JSX.Element {
     setError(null);
     setNotice(null);
     try {
-      const position = await currentPosition();
+      const fingerprint = JSON.stringify({
+        deliveryId,
+        expectedAttemptNo: leg.attempt_no,
+        statusCode,
+        extras,
+      });
+      let pendingRequest = pendingEventRequestsRef.current.get(fingerprint);
+      if (!pendingRequest) {
+        pendingRequest = {
+          key: crypto.randomUUID(),
+          body: currentPosition().then((position) => JSON.stringify({
+            status_code: statusCode,
+            expected_attempt_no: leg.attempt_no,
+            ...extras,
+            ...(position ?? {}),
+          })),
+        };
+        pendingEventRequestsRef.current.set(fingerprint, pendingRequest);
+      }
+      let requestBody: string;
+      try {
+        requestBody = await pendingRequest.body;
+      } catch (caught) {
+        pendingEventRequestsRef.current.delete(fingerprint);
+        throw caught;
+      }
       await apiFetch(`/api/deliveries/${deliveryId}/events`, {
         method: "POST",
-        body: JSON.stringify({ status_code: statusCode, ...extras, ...(position ?? {}) }),
+        headers: { "Idempotency-Key": pendingRequest.key },
+        body: requestBody,
       });
+      pendingEventRequestsRef.current.delete(fingerprint);
       setNotice(leg.is_return && statusCode === BlockchainEventType.DELIVERED
         ? "Đã hoàn hàng thành công cho người gửi."
         : SUCCESS_MESSAGES[statusCode]);
@@ -484,7 +540,7 @@ export function DeliveryRoutesPage(): React.JSX.Element {
       </div>
 
       {renderSheet()}
-      {cameraOpen ? <QrCameraScanner onClose={() => setCameraOpen(false)} onResult={(code) => { setCameraOpen(false); setSearch(code.toUpperCase()); setScanMode(true); }} /> : null}
+      {cameraOpen ? <QrCameraScanner onClose={() => setCameraOpen(false)} onResult={(code) => void handleQrResult(code)} /> : null}
     </DeliveryMobileShell>
   );
 }

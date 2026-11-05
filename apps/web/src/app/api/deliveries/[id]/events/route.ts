@@ -1,19 +1,11 @@
+import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import {
-  BlockchainEventType,
-  CodTransactionStatus,
-  DeliveryAttemptResult,
-  OrderStatusCode,
-  RoleCode,
-  ShipmentLegStatusCode,
-  ShipmentLegType,
-} from "@delivery/shared";
+import { BlockchainEventType, RoleCode } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
 import { isOwnCloudinaryImage } from "@/lib/cloudinary";
-import { getMaxDeliveryAttempts } from "@/lib/shipment-leg-rules";
 import { ok, fail } from "@/lib/api-response";
 
 interface RouteParams {
@@ -28,80 +20,103 @@ const scanEventSchema = z.object({
     BlockchainEventType.DELIVERED,
     BlockchainEventType.DELIVERY_FAILED,
   ]),
+  expected_attempt_no: z.number().int().positive(),
   location_lat: z.number().min(-90).max(90).optional(),
   location_lng: z.number().min(-180).max(180).optional(),
   note: z.string().trim().max(500).optional(),
   image_url: z.string().url().optional(),
-  /** Shipper xác nhận đã thu đủ tiền COD khi giao thành công. */
   cod_collected: z.boolean().optional(),
 });
 
-type DriverStatusCode = z.infer<typeof scanEventSchema>["status_code"];
-
-interface DeliveryRow {
-  id: string;
-  order_id: string;
-  shipment_leg_id: string | null;
-  delivery_staff_id: string;
-  orders: {
-    tracking_code: string;
-    cod_amount: number;
-    status_id: string;
-    order_statuses: { code: string } | null;
-  } | null;
-}
-
-interface LegRow {
-  id: string;
+type AtomicResult = {
+  event: Record<string, unknown>;
+  attempt: Record<string, unknown> | null;
+  order_status: string;
+  cod_transaction: Record<string, unknown> | null;
+  was_created: boolean;
+  tracking_code: string;
+  shipment_leg_id: string;
   leg_type: string;
-  status: string;
-  started_at: string | null;
-  assigned_at: string | null;
-  attempt_no: number;
   is_return: boolean;
+  leg_attempt_no: number;
+  from_status: string;
+  to_status: string;
+  chain_event_type: string;
+  cod_collected_amount: number | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const WAITING_PICKUP_STATUSES: string[] = [
-  OrderStatusCode.CREATED,
-  OrderStatusCode.PENDING_ASSIGNMENT,
-  OrderStatusCode.ASSIGNED,
-];
-const READY_FOR_LAST_MILE_STATUSES: string[] = [
-  OrderStatusCode.IN_WAREHOUSE,
-  OrderStatusCode.IN_TRANSIT,
-  OrderStatusCode.REDELIVERY,
-];
+function parseAtomicResult(value: unknown): AtomicResult | null {
+  if (!isRecord(value) || !isRecord(value.event)) return null;
+  if (
+    typeof value.event.id !== "string"
+    || typeof value.event.order_id !== "string"
+    || typeof value.event.event_time !== "string"
+    || (value.attempt !== null && (!isRecord(value.attempt) || typeof value.attempt.attempt_no !== "number"))
+    || (value.cod_transaction !== null && !isRecord(value.cod_transaction))
+    || typeof value.order_status !== "string"
+    || typeof value.was_created !== "boolean"
+    || typeof value.tracking_code !== "string"
+    || typeof value.shipment_leg_id !== "string"
+    || typeof value.leg_type !== "string"
+    || typeof value.is_return !== "boolean"
+    || typeof value.leg_attempt_no !== "number"
+    || typeof value.from_status !== "string"
+    || typeof value.to_status !== "string"
+    || typeof value.chain_event_type !== "string"
+    || (value.cod_collected_amount !== null && typeof value.cod_collected_amount !== "number")
+  ) {
+    return null;
+  }
+  if (!Object.values(BlockchainEventType).includes(value.chain_event_type as (typeof BlockchainEventType)[keyof typeof BlockchainEventType])) {
+    return null;
+  }
+  return value as AtomicResult;
+}
 
-/** Kiểm tra điều kiện chuyển trạng thái; trả về thông báo lỗi nếu không hợp lệ. */
-function transitionError(statusCode: DriverStatusCode, leg: LegRow, orderStatusCode: string | null): string | null {
-  const isPickupEvent = statusCode === BlockchainEventType.PICKED_UP || statusCode === BlockchainEventType.PICKUP_FAILED;
-  if (isPickupEvent) {
-    if (leg.leg_type !== ShipmentLegType.PICKUP || leg.status !== ShipmentLegStatusCode.ASSIGNED) {
-      return "Chặng lấy hàng chưa được phân công hoặc đã bắt đầu xử lý";
-    }
-    return WAITING_PICKUP_STATUSES.includes(orderStatusCode ?? "")
-      ? null
-      : "Đơn hàng không còn ở trạng thái chờ lấy hàng";
+function rpcErrorResponse(message: string) {
+  if (message.includes("IDEMPOTENCY_KEY_REUSED")) {
+    return fail("Idempotency-Key đã được dùng cho nội dung khác.", 409);
   }
-
-  if (leg.leg_type !== ShipmentLegType.LAST_MILE || leg.status !== ShipmentLegStatusCode.IN_PROGRESS) {
-    return "Chặng giao cuối chưa được xuất kho hoặc đã kết thúc";
+  if (message.includes("EVENT_ALREADY_RECORDED")) {
+    return fail("Mốc trạng thái này đã được ghi nhận cho lượt hiện tại.", 409);
   }
-  if (statusCode === BlockchainEventType.DELIVERING) {
-    const ready = leg.is_return
-      ? orderStatusCode === OrderStatusCode.RETURNING
-      : READY_FOR_LAST_MILE_STATUSES.includes(orderStatusCode ?? "");
-    return ready ? null : "Đơn hàng chưa ở trạng thái sẵn sàng giao cuối";
+  if (message.includes("STALE_DELIVERY_ATTEMPT")) {
+    return fail("Lượt giao đã thay đổi. Hãy tải lại chặng trước khi tiếp tục.", 409);
   }
-  const expected = leg.is_return ? OrderStatusCode.RETURNING : OrderStatusCode.DELIVERING;
-  return orderStatusCode === expected ? null : "Tài xế phải xác nhận đã nhận hàng và bắt đầu giao trước";
+  if (message.includes("DELIVERY_NOT_FOUND")) return fail("Delivery not found", 404);
+  if (message.includes("ACTOR_FORBIDDEN") || message.includes("DELIVERY_NOT_ASSIGNED")) {
+    return fail("Forbidden", 403);
+  }
+  if (message.includes("COD_CONFIRMATION_REQUIRED")) {
+    return fail("Cần xác nhận đã thu đủ COD trước khi hoàn tất giao hàng.", 400);
+  }
+  if (
+    message.includes("INVALID_DELIVERY_EVENT")
+    || message.includes("INVALID_IDEMPOTENCY_REQUEST")
+    || message.includes("INVALID_EVENT_NOTE")
+  ) {
+    return fail("Dữ liệu mốc giao hàng không hợp lệ.", 400);
+  }
+  if (
+    message.includes("DELIVERY_LEG_MISSING")
+    || message.includes("INVALID_DELIVERY_TRANSITION")
+    || message.includes("DELIVERY_START_REQUIRED")
+    || message.includes("COD_ALREADY_EXISTS")
+    || message.includes("ORDER_STATUS_CHANGED")
+  ) {
+    return fail("Trạng thái giao hàng đã thay đổi hoặc không thỏa điều kiện nghiệp vụ.", 409);
+  }
+  console.error("record_delivery_event_atomic failed", { message });
+  return fail("Không thể cập nhật mốc giao hàng.", 500);
 }
 
 /**
- * POST /api/deliveries/:id/events — shipper cập nhật các mốc thuộc chặng được
- * phân công: lấy hàng (thành công/thất bại), nhận hàng tại kho phát để giao,
- * kết quả giao. Chặng hoàn dùng cùng thao tác nhưng giao về người gửi.
- * Mốc nhập/xuất kho do WAREHOUSE_STAFF xử lý ở API warehouse-events.
+ * POST /api/deliveries/:id/events — ghi một delivery event nguyên tử cùng
+ * attempt, trạng thái chặng/đơn và giao dịch COD (nếu có).
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
@@ -110,261 +125,124 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return fail("Forbidden", 403);
   }
 
+  const idempotencyKey = z.string().uuid().safeParse(request.headers.get("Idempotency-Key"));
+  if (!idempotencyKey.success) return fail("Thiếu hoặc sai khóa chống gửi lặp.", 400);
+
   const { id: deliveryId } = await params;
-  const parsed = scanEventSchema.safeParse(await request.json());
-  if (!parsed.success) return fail(parsed.error.message);
-  const input = parsed.data;
-  const note = input.note?.trim() || null;
-
-  const supabase = getSupabaseServiceClient();
-  const { data: deliveryRaw, error: deliveryError } = await supabase
-    .from("deliveries")
-    .select("id, order_id, shipment_leg_id, delivery_staff_id, orders(tracking_code, cod_amount, status_id, order_statuses(code))")
-    .eq("id", deliveryId)
-    .maybeSingle();
-  if (deliveryError) return fail(deliveryError.message, 500);
-  const delivery = deliveryRaw as unknown as DeliveryRow | null;
-  if (!delivery || !delivery.orders) return fail("Delivery not found", 404);
-  if (auth.roleCode === RoleCode.DELIVERY_STAFF && delivery.delivery_staff_id !== auth.userId) {
-    return fail("Forbidden", 403);
+  const parsedDeliveryId = z.string().uuid().safeParse(deliveryId);
+  if (!parsedDeliveryId.success) return fail("Mã delivery không hợp lệ.", 400);
+  const parsedActorId = z.string().uuid().safeParse(auth.userId);
+  if (!parsedActorId.success) return fail("Unauthorized", 401);
+  const normalizedDeliveryId = parsedDeliveryId.data.toLowerCase();
+  const normalizedActorId = parsedActorId.data.toLowerCase();
+  let requestBody: unknown;
+  try {
+    requestBody = await request.json();
+  } catch {
+    return fail("Dữ liệu mốc giao hàng không hợp lệ.", 400);
   }
-  if (!delivery.shipment_leg_id) return fail("Bản ghi giao nhận chưa gắn với chặng vận chuyển", 409);
+  const parsed = scanEventSchema.safeParse(requestBody);
+  if (!parsed.success) return fail(parsed.error.message, 400);
 
-  const { data: legRaw, error: legError } = await supabase
-    .from("shipment_legs")
-    .select("id, leg_type, status, started_at, assigned_at, attempt_no, is_return")
-    .eq("id", delivery.shipment_leg_id)
-    .maybeSingle();
-  if (legError) return fail(legError.message, 500);
-  const leg = legRaw as LegRow | null;
-  if (!leg) return fail("Không tìm thấy chặng vận chuyển", 404);
-
-  const order = delivery.orders;
-  const currentStatusCode = order.order_statuses?.code ?? null;
-  const currentStatusId = order.status_id;
-  const invalidTransition = transitionError(input.status_code, leg, currentStatusCode);
-  if (invalidTransition) return fail(invalidTransition, 409);
-
-  const isFailure = input.status_code === BlockchainEventType.PICKUP_FAILED
-    || input.status_code === BlockchainEventType.DELIVERY_FAILED;
-  if (isFailure && !note) return fail("Báo thất bại phải kèm lý do", 400);
-
+  const input = parsed.data;
+  if (input.cod_collected === true && input.status_code !== BlockchainEventType.DELIVERED) {
+    return fail("Chỉ xác nhận thu COD khi giao hàng thành công.", 400);
+  }
+  const note = input.note?.trim() || null;
   const isDelivered = input.status_code === BlockchainEventType.DELIVERED;
-  const codAmount = Number(order.cod_amount ?? 0);
-  const collectsCod = isDelivered && !leg.is_return && codAmount > 0;
+  if (
+    input.status_code === BlockchainEventType.PICKUP_FAILED
+    || input.status_code === BlockchainEventType.DELIVERY_FAILED
+  ) {
+    if (!note) return fail("Báo thất bại phải kèm lý do", 400);
+  }
   if (isDelivered && !input.image_url?.trim()) {
     return fail("Giao thành công phải kèm ảnh minh chứng", 400);
   }
   if (input.image_url && !isOwnCloudinaryImage(input.image_url)) {
     return fail("Ảnh minh chứng phải được chụp và tải lên qua hệ thống", 400);
   }
-  if (collectsCod && input.cod_collected !== true) {
-    return fail("Vui lòng xác nhận đã thu đủ tiền COD trước khi hoàn tất giao hàng", 400);
-  }
+  const normalizedRequest = {
+    delivery_id: normalizedDeliveryId,
+    actor_id: normalizedActorId,
+    actor_role_code: auth.roleCode,
+    expected_attempt_no: input.expected_attempt_no,
+    status_code: input.status_code,
+    location_lat: input.location_lat ?? null,
+    location_lng: input.location_lng ?? null,
+    note,
+    image_url: input.image_url ?? null,
+    cod_collected: input.cod_collected ?? false,
+  };
+  const requestHash = createHash("sha256").update(JSON.stringify(normalizedRequest)).digest("hex");
 
-  // Mốc trong chặng hiện tại tính từ lúc xuất kho (hoặc lúc được phân công với
-  // chặng lấy hàng) để lần giao lại không bị chặn bởi sự kiện của lần trước.
-  const windowStart = leg.started_at ?? leg.assigned_at ?? "1970-01-01T00:00:00.000Z";
-  // delivery_events.status_id là trạng thái đơn tương ứng với mốc.
-  const eventStatusCode = input.status_code === BlockchainEventType.PICKUP_FAILED
-    ? OrderStatusCode.PENDING_ASSIGNMENT
-    : leg.is_return && isDelivered
-      ? OrderStatusCode.RETURNED
-      : input.status_code;
-  const { data: statusRows, error: statusError } = await supabase
-    .from("order_statuses")
-    .select("id, code")
-    .in("code", [OrderStatusCode.DELIVERING, eventStatusCode]);
-  if (statusError) return fail(statusError.message, 500);
-  const statusIdByCode = new Map((statusRows ?? []).map((row) => [row.code, row.id]));
-
-  if (isDelivered || input.status_code === BlockchainEventType.DELIVERY_FAILED) {
-    const { data: startedEvent, error: startedEventError } = await supabase
-      .from("delivery_events")
-      .select("id")
-      .eq("delivery_id", deliveryId)
-      .eq("status_id", statusIdByCode.get(OrderStatusCode.DELIVERING) ?? "")
-      .gte("event_time", windowStart)
-      .limit(1)
-      .maybeSingle();
-    if (startedEventError) return fail(startedEventError.message, 500);
-    if (!startedEvent) return fail("Chưa ghi nhận tài xế nhận hàng tại kho", 409);
-  }
-
-  const eventStatusId = statusIdByCode.get(eventStatusCode);
-  if (!eventStatusId) return fail("Status code invalid", 400);
-
-  const { data: duplicateEvent, error: duplicateError } = await supabase
-    .from("delivery_events")
-    .select("id")
-    .eq("delivery_id", deliveryId)
-    .eq("status_id", eventStatusId)
-    .gte("event_time", windowStart)
-    .limit(1)
-    .maybeSingle();
-  if (duplicateError) return fail(duplicateError.message, 500);
-  if (duplicateEvent) return fail("Mốc trạng thái này đã được ghi nhận cho chặng hiện tại", 409);
-
-  const eventTime = new Date().toISOString();
-  const { data: event, error: eventError } = await supabase
-    .from("delivery_events")
-    .insert({
-      delivery_id: deliveryId,
-      order_id: delivery.order_id,
-      status_id: eventStatusId,
-      from_status_id: currentStatusId,
-      performed_by: auth.userId,
-      event_time: eventTime,
-      location_lat: input.location_lat ?? null,
-      location_lng: input.location_lng ?? null,
-      note,
-      image_url: input.image_url ?? null,
-    })
-    .select("*")
-    .single();
-  if (eventError) return fail(eventError.message, 500);
-
-  let attempt: { attempt_no: number } | null = null;
-  let nextOrderStatusCode: string | null = null;
-  if (input.status_code === BlockchainEventType.PICKED_UP) {
-    nextOrderStatusCode = OrderStatusCode.PICKED_UP;
-  } else if (input.status_code === BlockchainEventType.PICKUP_FAILED) {
-    nextOrderStatusCode = OrderStatusCode.PENDING_ASSIGNMENT;
-  } else if (input.status_code === BlockchainEventType.DELIVERING) {
-    nextOrderStatusCode = leg.is_return ? null : OrderStatusCode.DELIVERING;
-  } else {
-    const { data: previousAttempts, error: attemptsError } = await supabase
-      .from("delivery_attempts")
-      .select("attempt_no")
-      .eq("delivery_id", deliveryId)
-      .order("attempt_no", { ascending: false })
-      .limit(1);
-    if (attemptsError) return fail(attemptsError.message, 500);
-    const attemptNo = (previousAttempts?.[0]?.attempt_no ?? 0) + 1;
-
-    const { data: attemptRow, error: attemptError } = await supabase
-      .from("delivery_attempts")
-      .insert({
-        delivery_id: deliveryId,
-        attempt_no: attemptNo,
-        attempt_time: eventTime,
-        result: isDelivered ? DeliveryAttemptResult.SUCCESS : DeliveryAttemptResult.FAILED,
-        reason_fail: isDelivered ? null : note,
-        note,
-      })
-      .select("*")
-      .single();
-    if (attemptError) return fail(attemptError.message, 500);
-    attempt = attemptRow;
-
-    if (isDelivered) {
-      nextOrderStatusCode = leg.is_return ? OrderStatusCode.RETURNED : OrderStatusCode.DELIVERED;
-    } else if (!leg.is_return) {
-      // Hết số lần giao: đơn chờ kho nhận lại hàng để tự lập tuyến hoàn.
-      const attemptLimit = await getMaxDeliveryAttempts(supabase);
-      if (attemptLimit.error) {
-        console.error("Không đọc được giới hạn số lần giao");
-        return fail("Không thể xác định giới hạn số lần giao", 500);
-      }
-      nextOrderStatusCode = attemptNo < attemptLimit.maxAttempts ? OrderStatusCode.REDELIVERY : OrderStatusCode.DELIVERY_FAILED;
-    }
-  }
-
-  const legUpdate = input.status_code === BlockchainEventType.PICKED_UP
-    ? { status: ShipmentLegStatusCode.IN_PROGRESS, started_at: eventTime }
-    : isFailure
-      ? { status: ShipmentLegStatusCode.FAILED }
-      : isDelivered
-        ? { status: ShipmentLegStatusCode.COMPLETED, completed_at: eventTime }
-        : null;
-  if (legUpdate) {
-    const { error: legUpdateError } = await supabase.from("shipment_legs").update(legUpdate).eq("id", leg.id);
-    if (legUpdateError) return fail(legUpdateError.message, 500);
-  }
-
-  if (nextOrderStatusCode) {
-    let nextStatusId = statusIdByCode.get(nextOrderStatusCode);
-    if (!nextStatusId) {
-      const { data: nextStatus } = await supabase
-        .from("order_statuses")
-        .select("id")
-        .eq("code", nextOrderStatusCode)
-        .maybeSingle();
-      nextStatusId = nextStatus?.id;
-    }
-    if (!nextStatusId) return fail("Không tìm thấy trạng thái tiếp theo", 500);
-    const { data: updatedOrder, error: orderUpdateError } = await supabase
-      .from("orders")
-      .update({ status_id: nextStatusId })
-      .eq("id", delivery.order_id)
-      .eq("status_id", currentStatusId)
-      .select("id")
-      .maybeSingle();
-    if (orderUpdateError) {
-      console.error("Không cập nhật được trạng thái đơn sau sự kiện giao hàng", orderUpdateError.code);
-      return fail("Không thể cập nhật trạng thái đơn hàng", 500);
-    }
-    if (!updatedOrder) return fail("Trạng thái đơn đã thay đổi; hãy tải lại dữ liệu", 409);
-  }
-
-  let codTransaction: unknown = null;
-  if (collectsCod) {
-    const { data: codRow, error: codError } = await supabase
-      .from("cod_transactions")
-      .insert({
-        order_id: delivery.order_id,
-        amount: codAmount,
-        collected_by: auth.userId,
-        collected_at: eventTime,
-        status: CodTransactionStatus.COLLECTED,
-        note: `Thu khi giao thành công, delivery ${deliveryId}`,
-      })
-      .select("*")
-      .single();
-    if (codError && codError.code !== "23505") return fail(codError.message, 500);
-    if (codError?.code === "23505") {
-      const { data: existing, error: existingError } = await supabase.from("cod_transactions")
-        .select("id, amount, status, collected_by, collected_at")
-        .eq("order_id", delivery.order_id).maybeSingle();
-      if (existingError) return fail(existingError.message, 500);
-      if (!existing || Number(existing.amount) !== codAmount || existing.collected_by !== auth.userId || !existing.collected_at || existing.status !== CodTransactionStatus.COLLECTED) {
-        return fail("COD hiện có không khớp với đơn hàng. Cần kiểm tra thủ công trước khi tiếp tục.", 409);
-      }
-      codTransaction = existing;
-    } else {
-      codTransaction = codRow;
-    }
-  }
-
-  const chainEventType = leg.is_return && isDelivered ? BlockchainEventType.RETURNED : input.status_code;
-  await queueBlockchainEvent({
-    orderId: delivery.order_id,
-    trackingCode: order.tracking_code,
-    eventType: chainEventType,
-    performedBy: auth.userId,
-    payload: {
-      deliveryEventId: event.id,
-      deliveryId,
-      shipmentLegId: leg.id,
-      legType: leg.leg_type,
-      isReturn: leg.is_return,
-      legAttemptNo: leg.attempt_no,
-      deliveryAttemptNo: attempt?.attempt_no ?? null,
-      fromStatus: currentStatusCode,
-      toStatus: nextOrderStatusCode ?? currentStatusCode,
-      note,
-      imageUrl: input.image_url ?? null,
-      locationLat: input.location_lat ?? null,
-      locationLng: input.location_lng ?? null,
-      codCollectedAmount: collectsCod ? codAmount : null,
-      eventTime,
-    },
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase.rpc("record_delivery_event_atomic", {
+    p_delivery_id: normalizedDeliveryId,
+    p_actor_id: normalizedActorId,
+    p_actor_role_code: auth.roleCode,
+    p_expected_attempt_no: input.expected_attempt_no,
+    p_status_code: input.status_code,
+    p_location_lat: input.location_lat ?? null,
+    p_location_lng: input.location_lng ?? null,
+    p_note: note,
+    p_image_url: input.image_url ?? null,
+    p_cod_collected: input.cod_collected ?? false,
+    p_idempotency_key: idempotencyKey.data,
+    p_request_hash: requestHash,
   });
+  if (error) return rpcErrorResponse(error.message);
+
+  const result = parseAtomicResult(data);
+  if (!result) {
+    console.error("record_delivery_event_atomic returned an invalid result", { deliveryId });
+    return fail("Không đọc được kết quả cập nhật giao hàng.", 500);
+  }
+
+  if (result.was_created) {
+    try {
+      const queueResult = await queueBlockchainEvent({
+        orderId: String(result.event.order_id),
+        trackingCode: result.tracking_code,
+        eventType: result.chain_event_type as (typeof BlockchainEventType)[keyof typeof BlockchainEventType],
+        performedBy: auth.userId,
+        payload: {
+          deliveryEventId: result.event.id,
+          deliveryId,
+          shipmentLegId: result.shipment_leg_id,
+          legType: result.leg_type,
+          isReturn: result.is_return,
+          legAttemptNo: result.leg_attempt_no,
+          deliveryAttemptNo: typeof result.attempt?.attempt_no === "number" ? result.attempt.attempt_no : null,
+          fromStatus: result.from_status,
+          toStatus: result.to_status,
+          note,
+          imageUrl: input.image_url ?? null,
+          locationLat: input.location_lat ?? null,
+          locationLng: input.location_lng ?? null,
+          codCollectedAmount: result.cod_collected_amount,
+          eventTime: result.event.event_time,
+        },
+      });
+      if (queueResult.status === "enqueue_failed") {
+        console.error("Delivery event committed, but Blockchain enqueue failed", {
+          deliveryEventId: result.event.id,
+          error: queueResult.error,
+        });
+      }
+    } catch (queueError) {
+      console.error("Delivery event committed, but Blockchain enqueue threw", {
+        deliveryEventId: result.event.id,
+        queueError,
+      });
+    }
+  }
 
   return ok({
-    event,
-    attempt,
-    order_status: nextOrderStatusCode ?? currentStatusCode,
-    cod_transaction: codTransaction,
-  }, 201);
+    event: result.event,
+    attempt: result.attempt,
+    order_status: result.order_status,
+    cod_transaction: result.cod_transaction,
+    was_created: result.was_created,
+  }, result.was_created ? 201 : 200);
 }

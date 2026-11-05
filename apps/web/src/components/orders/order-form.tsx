@@ -340,6 +340,7 @@ async function ensureManualContact({
 export function NewOrderPage(): React.JSX.Element {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [receiverIsSender, setReceiverIsSender] = useState(false);
   const [shippingFeePayer, setShippingFeePayer] = useState<ShippingFeePayer>("sender");
   const [shippingPaymentMethod, setShippingPaymentMethod] = useState<ShippingPaymentMethod>("cash");
   const paymentAvailability = usePaymentAvailability();
@@ -509,6 +510,7 @@ export function NewOrderPage(): React.JSX.Element {
       const requestBody = JSON.stringify({
         sender_id: sender.id,
         receiver_id: receiver.id,
+        ...(receiverIsSender ? { receiver_is_sender: true } : {}),
         pickup_address_id: pickupAddress.id,
         delivery_address_id: deliveryAddress.id,
         service_type: form.serviceType,
@@ -724,6 +726,15 @@ export function NewOrderPage(): React.JSX.Element {
               </div>
             </div>
 
+            <label className="mt-4 flex items-start gap-2 text-[12px] text-dt-muted">
+              <input
+                type="checkbox"
+                checked={receiverIsSender}
+                onChange={(event) => setReceiverIsSender(event.target.checked)}
+                className="mt-0.5 accent-dt-yellow"
+              />
+              <span>Người nhận là tôi. Đơn sẽ xuất hiện trong cả danh sách đơn tôi gửi và đơn tôi nhận.</span>
+            </label>
             <p className="text-[11px] text-dt-muted">Đơn hàng sẽ dùng đúng địa chỉ lấy và giao bạn đã chọn; việc chọn địa chỉ khác không làm thay đổi địa chỉ mặc định trong sổ.</p>
           </Card>
 

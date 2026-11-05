@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
   if (to.getTime() - from.getTime() > 800 * 24 * 60 * 60 * 1000) return fail("Khoảng thống kê tối đa 800 ngày", 400);
 
   const scope = await scopedOrderIds(auth);
-  if (scope.error) return fail(scope.error, scope.error === "Forbidden" ? 403 : 500);
+  if (scope.error) return fail(scope.error, scope.status ?? (scope.error === "Forbidden" ? 403 : 500));
 
   if (auth.roleCode === RoleCode.ADMIN || auth.roleCode === RoleCode.DISPATCHER) {
     try { await scanAlertsIfDue(); } catch (error) { console.error("Quét cảnh báo thất bại", error); }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { OrderStatusCode, type Paginated } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -20,26 +20,39 @@ export function StaffOrdersPage({ basePath, heading, subtitle }: { basePath: str
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pageSize = 20;
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (status) query.set("status", status);
     if (search.trim()) query.set("q", search.trim());
+    if (fromDate) query.set("from", fromDate);
+    if (toDate) query.set("to", toDate);
     try {
       const result = await apiFetch<Paginated<OrderListItem>>(`/api/orders?${query.toString()}`);
+      if (requestId !== requestIdRef.current) return;
       setOrders(result.items);
       setTotal(result.total);
+      const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       setError(null);
     } catch (caught) {
+      if (requestId !== requestIdRef.current) return;
       setError(caught instanceof Error ? caught.message : "Không tải được danh sách đơn hàng");
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [page, status, search]);
+  }, [page, status, search, fromDate, toDate]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 250);
     return () => clearTimeout(timer);
@@ -49,12 +62,14 @@ export function StaffOrdersPage({ basePath, heading, subtitle }: { basePath: str
   return <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
     <PageHeader heading={heading} subtitle={subtitle} action={<Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button>} />
     <Card className="mt-5">
-      <div className="grid gap-3 md:grid-cols-3">
-        <TextField label="Tìm theo mã vận đơn" value={search} placeholder="Ví dụ: DT2610" onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
+      <div className="grid gap-3 md:grid-cols-5">
+        <TextField label="Tìm mã, tên hoặc số điện thoại" value={search} maxLength={100} placeholder="Mã vận đơn hoặc liên hệ" onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
         <SelectField label="Trạng thái" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}>
           <option value="">Tất cả</option>
           {STATUS_OPTIONS.map((code) => <option key={code} value={code}>{statusLabel({ code, name: code })}</option>)}
         </SelectField>
+        <TextField label="Từ ngày tạo" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => { setFromDate(event.target.value); setPage(1); }} />
+        <TextField label="Đến ngày tạo" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => { setToDate(event.target.value); setPage(1); }} />
       </div>
     </Card>
     {error ? <p role="alert" className="mt-4 rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}

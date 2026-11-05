@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
+import { OrderStatusCode } from "@delivery/shared";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { codStateLabel, type CodState } from "@/lib/cod";
 import { ShippingPaymentPanel } from "@/components/payments/shipping-payment-panel";
@@ -25,6 +26,14 @@ import {
 interface OrderDetailResponse {
   order: OrderDetail;
   events: OrderEvent[];
+  warehouseEvents: Array<{
+    id: string;
+    event_time: string;
+    event_type: string;
+    package_condition: string | null;
+    actual_weight_kg: number | null;
+    warehouse: { name: string; province: string } | Array<{ name: string; province: string }> | null;
+  }>;
   viewerRole?: string;
   isCustomerParticipant?: boolean;
   codTransaction: { status: CodState; amount: number; collected_at: string | null; reconciled_at: string | null; remitted_at?: string | null; handed_over_at?: string | null } | null;
@@ -80,14 +89,23 @@ export function OrderDetailPage({ orderId, backHref = "/customer" }: { orderId: 
     return <Card><p className="text-[13px] text-dt-red">{error ?? "Không có dữ liệu đơn hàng."}</p><Link href={backHref} className="text-[12px] text-dt-yellow hover:underline">Về tổng quan</Link></Card>;
   }
 
-  const { order, events, codTransaction } = result;
+  const { order, events, warehouseEvents, codTransaction } = result;
   const sender = relationValue(order.sender);
   const receiver = relationValue(order.receiver);
   const pickupAddress = relationValue(order.pickup_address);
   const deliveryAddress = relationValue(order.delivery_address);
   const pickupWarehouse = relationValue(order.pickup_warehouse);
   const deliveryWarehouse = relationValue(order.delivery_warehouse);
-  const timeline: OrderEvent[] = events.length > 0 ? events : [{ event_time: order.created_at, order_statuses: { code: "CREATED", name: "" }, note: "Đơn hàng được tạo" }];
+  const timeline: OrderEvent[] = [
+    { id: `created:${order.id}`, event_time: order.created_at, order_statuses: { code: OrderStatusCode.CREATED, name: "Đã tạo đơn" }, note: "Đơn hàng được tạo" },
+    ...events.filter((event) => relationValue(event.order_statuses)?.code !== OrderStatusCode.CREATED),
+  ].sort((a, b) => {
+    const timeDifference = Date.parse(a.event_time) - Date.parse(b.event_time);
+    if (timeDifference !== 0) return timeDifference;
+    if (a.id?.startsWith("created:")) return -1;
+    if (b.id?.startsWith("created:")) return 1;
+    return (a.id ?? "").localeCompare(b.id ?? "");
+  });
 
   return (
     <>
@@ -114,11 +132,12 @@ export function OrderDetailPage({ orderId, backHref = "/customer" }: { orderId: 
       {result.viewerRole === "ADMIN" ? <AdminOrderOperations orderId={orderId} onChanged={() => void loadOrder()} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
-        <Card><div className="flex items-center justify-between gap-3"><div><CardLabel>Hàng hóa</CardLabel><p className="mt-1 text-[11px] text-dt-muted">{order.order_items.length} mặt hàng</p></div><Box className="text-dt-yellow" size={18} /></div><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[520px] text-left text-[11px]"><thead className="border-b border-dt-border text-[10px] uppercase tracking-wide text-dt-muted"><tr><th className="py-2 font-medium">Tên hàng</th><th className="py-2 font-medium">Loại</th><th className="py-2 text-right font-medium">SL</th><th className="py-2 text-right font-medium">Khối lượng</th><th className="py-2 text-right font-medium">Khai giá</th></tr></thead><tbody>{order.order_items.map((item) => <tr key={item.id} className="border-b border-dt-border/70 last:border-0"><td className="py-3">{item.item_name}</td><td className="py-3 text-dt-muted">{item.item_type ?? "—"}</td><td className="py-3 text-right">{item.quantity}</td><td className="py-3 text-right text-dt-muted">{item.weight ? `${item.weight} kg` : "—"}</td><td className="py-3 text-right text-dt-muted">{item.declared_value ? formatVnd(Number(item.declared_value)) : "—"}</td></tr>)}</tbody></table></div>{order.note ? <p className="mt-4 rounded-md bg-dt-panel2 p-3 text-[11px] leading-5 text-dt-muted"><strong className="text-dt-text">Ghi chú:</strong> {order.note}</p> : null}</Card>
+        <Card><div className="flex items-center justify-between gap-3"><div><CardLabel>Hàng hóa</CardLabel><p className="mt-1 text-[11px] text-dt-muted">{order.order_items.length} mặt hàng</p></div><Box className="text-dt-yellow" size={18} /></div><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[680px] text-left text-[11px]"><thead className="border-b border-dt-border text-[10px] uppercase tracking-wide text-dt-muted"><tr><th className="py-2 font-medium">Tên hàng</th><th className="py-2 font-medium">Loại</th><th className="py-2 text-right font-medium">SL</th><th className="py-2 text-right font-medium">Khối lượng</th><th className="py-2 text-right font-medium">Khai giá</th><th className="py-2 font-medium">Ghi chú</th></tr></thead><tbody>{order.order_items.map((item) => <tr key={item.id} className="border-b border-dt-border/70 last:border-0"><td className="py-3">{item.item_name}</td><td className="py-3 text-dt-muted">{item.item_type ?? "—"}</td><td className="py-3 text-right">{item.quantity}</td><td className="py-3 text-right text-dt-muted">{item.weight ? `${item.weight} kg` : "—"}</td><td className="py-3 text-right text-dt-muted">{item.declared_value !== null ? formatVnd(Number(item.declared_value)) : "—"}</td><td className="max-w-[220px] py-3 text-dt-muted">{item.note ?? "—"}</td></tr>)}</tbody></table></div>{order.note ? <p className="mt-4 rounded-md bg-dt-panel2 p-3 text-[11px] leading-5 text-dt-muted"><strong className="text-dt-text">Ghi chú:</strong> {order.note}</p> : null}</Card>
         <Card><CardLabel>Thanh toán & COD</CardLabel><div className="space-y-3 text-[12px]"><div className="flex justify-between gap-3"><span className="text-dt-muted">Phí giao hàng (riêng)</span><span>{formatVnd(Number(order.total_fee) || 0)}</span></div><p>Người trả phí: {order.shipping_fee_payer ? SHIPPING_FEE_PAYER_LABEL[order.shipping_fee_payer] : "Đơn cũ chưa ghi nhận"}</p><p>Phương thức: {order.shipping_payment_method ? SHIPPING_PAYMENT_METHOD_LABEL[order.shipping_payment_method] : "Chưa ghi nhận"}</p><p>Trạng thái phí: {order.shipping_payment_status === "paid" ? "Đã xác nhận thanh toán" : "Chưa xác nhận thanh toán"}</p><ShippingPaymentPanel order={order} viewerRole={result.viewerRole ?? null} isCustomerParticipant={Boolean(result.isCustomerParticipant)} onChanged={() => void loadOrder()} /><div className="flex justify-between gap-3 border-t border-dt-border pt-3"><span className="text-dt-muted">COD phải thu hộ (tách riêng)</span><span className="text-dt-yellow">{formatVnd(Number(order.cod_amount) || 0)}</span></div>{Number(order.cod_amount) > 0 ? <><p>Trạng thái COD: {codStateLabel(codTransaction?.status ?? "pending", codTransaction?.remitted_at ?? null, codTransaction?.handed_over_at ?? null)}</p>{codTransaction?.collected_at ? <p className="text-dt-muted">Thu lúc {formatDateTime(codTransaction.collected_at)} · Số tiền ghi nhận: {formatVnd(Number(codTransaction.amount))}</p> : null}{codTransaction?.reconciled_at ? <p className="text-dt-muted">Đối soát lúc {formatDateTime(codTransaction.reconciled_at)}</p> : null}{codTransaction?.remitted_at ? <p className="text-dt-muted">Đã chuyển trả người gửi lúc {formatDateTime(codTransaction.remitted_at)}.</p> : <p className="text-dt-muted">Đối soát chưa có nghĩa là đã chuyển trả tiền cho người gửi.</p>}</> : <p className="text-dt-muted">Đơn này không thu hộ COD.</p>}</div><div className="mt-4 flex items-start gap-2 rounded-md border border-dt-green/20 bg-dt-green/5 p-3 text-[10px] leading-4 text-dt-muted"><ShieldCheck size={14} className="mt-0.5 shrink-0 text-dt-green" />Thông tin đơn hàng được kiểm soát theo quyền của tài khoản.</div></Card>
       </div>
 
       <Card><div className="flex items-center gap-3"><Truck className="text-dt-yellow" size={18} /><div><CardLabel>Hành trình đơn hàng</CardLabel><p className="mt-1 text-[11px] text-dt-muted">Các mốc trạng thái đã ghi nhận</p></div></div><div className="mt-4 space-y-0">{timeline.map((event, index) => <div key={`${event.event_time}-${index}`} className="flex gap-3"><div className="flex w-5 shrink-0 flex-col items-center"><span className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full ${index === timeline.length - 1 ? "bg-dt-yellow text-dt-bg" : "border border-dt-green/40 text-dt-green"}`}><CheckCircle2 size={12} /></span>{index < timeline.length - 1 ? <span className="h-full min-h-8 w-px bg-dt-border" /> : null}</div><div className="pb-5"><p className="text-[12px] font-medium">{statusLabel(event.order_statuses)}</p><p className="mt-1 text-[10px] text-dt-muted">{formatDateTime(event.event_time)}{event.note ? ` · ${event.note}` : ""}</p>{event.image_url ? <a href={event.image_url} target="_blank" rel="noreferrer" className="mt-2 block w-fit" aria-label="Xem ảnh minh chứng"><Image src={event.image_url} alt="Ảnh minh chứng" width={120} height={90} unoptimized className="h-[90px] w-[120px] rounded-md border border-dt-border object-cover" /></a> : null}</div></div>)}</div></Card>
+      <Card><CardLabel>Sự kiện tại kho</CardLabel>{warehouseEvents.length === 0 ? <p className="mt-2 text-[11px] text-dt-muted">Chưa có sự kiện tại kho.</p> : <div className="mt-3 space-y-3">{warehouseEvents.map((event) => { const warehouse = relationValue(event.warehouse); return <div key={event.id} className="border-b border-dt-border/70 pb-3 last:border-0 last:pb-0"><p className="text-[12px] font-medium">{event.event_type === "INBOUND" ? "Nhập kho" : event.event_type === "OUTBOUND" ? "Xuất kho" : event.event_type}</p><p className="mt-1 text-[10px] text-dt-muted">{formatDateTime(event.event_time)}{warehouse ? ` · ${warehouse.name}, ${warehouse.province}` : ""}</p>{event.package_condition ? <p className="mt-1 text-[10px] text-dt-muted">Tình trạng kiện: {event.package_condition === "INTACT" ? "Nguyên vẹn" : event.package_condition === "DAMAGED" ? "Hư hỏng" : event.package_condition}</p> : null}{event.actual_weight_kg !== null ? <p className="mt-1 text-[10px] text-dt-muted">Khối lượng thực tế: {event.actual_weight_kg} kg</p> : null}</div>; })}</div>}</Card>
     </>
   );
 }

@@ -953,9 +953,12 @@ export type Database = {
           note: string | null
           pickup_address_id: string
           pickup_warehouse_id: string | null
+          public_tracking_token: string
           qr_code: string
           receiver_id: string
+          receiver_user_id: string | null
           sender_id: string
+          sender_user_id: string | null
           service_type: string
           shipping_fee_payer: string | null
           shipping_handover_id: string | null
@@ -989,9 +992,12 @@ export type Database = {
           note?: string | null
           pickup_address_id: string
           pickup_warehouse_id?: string | null
+          public_tracking_token?: string
           qr_code: string
           receiver_id: string
+          receiver_user_id?: string | null
           sender_id: string
+          sender_user_id?: string | null
           service_type?: string
           shipping_fee_payer?: string | null
           shipping_handover_id?: string | null
@@ -1025,9 +1031,12 @@ export type Database = {
           note?: string | null
           pickup_address_id?: string
           pickup_warehouse_id?: string | null
+          public_tracking_token?: string
           qr_code?: string
           receiver_id?: string
+          receiver_user_id?: string | null
           sender_id?: string
+          sender_user_id?: string | null
           service_type?: string
           shipping_fee_payer?: string | null
           shipping_handover_id?: string | null
@@ -1678,6 +1687,21 @@ export type Database = {
       }
       search_orders_page: {
         Args: {
+          p_page: number
+          p_page_size: number
+          p_search: string | null
+          p_status_code: string | null
+          p_visible_order_ids: string[] | null
+        }
+        Returns: {
+          order_id: string | null
+          total_count: number
+        }[]
+      }
+      search_orders_page_filtered: {
+        Args: {
+          p_created_before: string | null
+          p_created_from: string | null
           p_page: number
           p_page_size: number
           p_search: string | null

@@ -1,112 +1,204 @@
-import { normalizePhone, RoleCode, type AuthTokenPayload } from "@delivery/shared";
+import { RoleCode, WarehouseLevelCode, WarehouseStatusCode, type AuthTokenPayload } from "@delivery/shared";
 import type { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getUserOperationalScope } from "@/lib/dispatcher-scope";
-import { normalizeArea } from "@/lib/shipment-routing";
 
 type ServiceClient = ReturnType<typeof getSupabaseServiceClient>;
 
+const ACCESS_BATCH_SIZE = 1000;
+
 type OrderAccessRow = {
   id: string;
-  created_by: string;
-  sender: { user_id: string | null; phone: string } | null;
-  receiver: { user_id: string | null; phone: string } | null;
-  pickup_warehouse_id: string | null;
-  delivery_warehouse_id: string | null;
-  pickup_address: { province: string | null } | null;
-  delivery_address: { province: string | null } | null;
+  receiver_user_id: string | null;
+};
+
+type AccessResult<T> = {
+  rows: T[];
+  error: string | null;
 };
 
 export type OrderViewAccess =
   | { allowed: true; canConfirmReceipt: boolean; isCustomerParticipant: boolean }
   | { allowed: false; error: string; status: number };
 
-function canViewAllOrders(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
+async function fetchAllRows<T>(
+  load: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<AccessResult<T>> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += ACCESS_BATCH_SIZE) {
+    const result = await load(from, from + ACCESS_BATCH_SIZE - 1);
+    if (result.error) return { rows: [], error: result.error.message };
+    const batch = result.data ?? [];
+    rows.push(...batch);
+    if (batch.length < ACCESS_BATCH_SIZE) return { rows, error: null };
+  }
+}
+
+async function orderIdsForWarehouses(
+  supabase: ServiceClient,
+  warehouseIds: string[],
+): Promise<{ ids: string[]; error: string | null }> {
+  const ids = new Set<string>();
+  for (let offset = 0; offset < warehouseIds.length; offset += 100) {
+    const batch = warehouseIds.slice(offset, offset + 100);
+    const filter = `pickup_warehouse_id.in.(${batch.join(",")}),delivery_warehouse_id.in.(${batch.join(",")})`;
+    const [orders, legs] = await Promise.all([
+      fetchAllRows<{ id: string }>(async (from, to) => await supabase
+        .from("orders")
+        .select("id")
+        .or(filter)
+        .order("id", { ascending: true })
+        .range(from, to)),
+      fetchAllRows<{ order_id: string }>(async (from, to) => await supabase
+        .from("shipment_legs")
+        .select("order_id")
+        .or(`from_warehouse_id.in.(${batch.join(",")}),to_warehouse_id.in.(${batch.join(",")})`)
+        .order("order_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)),
+    ]);
+    if (orders.error) return { ids: [], error: orders.error };
+    if (legs.error) return { ids: [], error: legs.error };
+    orders.rows.forEach((order) => ids.add(order.id));
+    legs.rows.forEach((leg) => ids.add(leg.order_id));
+  }
+  return { ids: Array.from(ids), error: null };
 }
 
 /**
- * Kiểm tra tài khoản có được xem một đơn hàng không.
- *
- * API dùng service role nên mọi route đọc đơn phải qua hàm này: khách hàng chỉ
- * xem đơn mình tạo hoặc là người gửi/nhận (theo user_id hoặc số điện thoại);
- * điều phối viên và nhân viên kho bị giới hạn theo kho/tỉnh phụ trách; shipper
- * chỉ xem đơn từng được phân công.
+ * Returns the order IDs visible to a role. `ids: null` means unrestricted
+ * access and is reserved for ADMIN.
+ */
+export async function getVisibleOrderIds(
+  supabase: ServiceClient,
+  auth: AuthTokenPayload,
+  direction?: "sent" | "received",
+): Promise<{ ids: string[] | null; error: string | null; status?: number }> {
+  if (auth.roleCode === RoleCode.ADMIN) return { ids: null, error: null };
+
+  if (
+    auth.roleCode === RoleCode.DISPATCHER
+    || auth.roleCode === RoleCode.WAREHOUSE_STAFF
+  ) {
+    const scope = await getUserOperationalScope(auth);
+    if (scope.error) return { ids: [], error: scope.error, status: 500 };
+    if (!scope.warehouseId) {
+      return { ids: [], error: "Tài khoản chưa được gán kho phụ trách", status: 409 };
+    }
+
+    let warehouseIds = [scope.warehouseId];
+    if (auth.roleCode === RoleCode.DISPATCHER && scope.warehouseLevel === WarehouseLevelCode.PROVINCE) {
+      const provinceWarehouses = await fetchAllRows<{ id: string }>(async (from, to) => await supabase
+        .from("warehouses")
+        .select("id")
+        .eq("province", scope.province ?? "")
+        .eq("status", WarehouseStatusCode.ACTIVE)
+        .order("id", { ascending: true })
+        .range(from, to));
+      if (provinceWarehouses.error) return { ids: [], error: provinceWarehouses.error };
+      warehouseIds = provinceWarehouses.rows.map((warehouse) => warehouse.id);
+    }
+
+    const visibleOrders = await orderIdsForWarehouses(supabase, warehouseIds);
+    return { ids: visibleOrders.ids, error: visibleOrders.error };
+  }
+
+  if (auth.roleCode === RoleCode.DELIVERY_STAFF) {
+    const [deliveries, legs] = await Promise.all([
+      fetchAllRows<{ order_id: string }>(async (from, to) => await supabase
+        .from("deliveries")
+        .select("order_id, shipment_leg_id")
+        .eq("delivery_staff_id", auth.userId)
+        .is("shipment_leg_id", null)
+        .order("order_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)),
+      fetchAllRows<{ order_id: string }>(async (from, to) => await supabase
+        .from("shipment_legs")
+        .select("order_id")
+        .eq("assigned_staff_id", auth.userId)
+        .order("order_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)),
+    ]);
+    if (deliveries.error) return { ids: [], error: deliveries.error };
+    if (legs.error) return { ids: [], error: legs.error };
+    return {
+      ids: Array.from(new Set([
+        ...deliveries.rows.map((delivery) => delivery.order_id),
+        ...legs.rows.map((leg) => leg.order_id),
+      ])),
+      error: null,
+    };
+  }
+
+  if (auth.roleCode === RoleCode.CUSTOMER) {
+    const [sentOrders, receivedOrders] = await Promise.all([
+      direction === "received"
+        ? Promise.resolve({ rows: [], error: null })
+        : fetchAllRows<{ id: string }>(async (from, to) => await supabase
+          .from("orders")
+          .select("id")
+          .eq("sender_user_id", auth.userId)
+          .order("id", { ascending: true })
+          .range(from, to)),
+      direction === "sent"
+        ? Promise.resolve({ rows: [], error: null })
+        : fetchAllRows<{ id: string }>(async (from, to) => await supabase
+          .from("orders")
+          .select("id")
+          .eq("receiver_user_id", auth.userId)
+          .order("id", { ascending: true })
+          .range(from, to)),
+    ]);
+    if (sentOrders.error) return { ids: [], error: sentOrders.error };
+    if (receivedOrders.error) return { ids: [], error: receivedOrders.error };
+
+    return {
+      ids: Array.from(new Set([
+        ...sentOrders.rows.map((order) => order.id),
+        ...receivedOrders.rows.map((order) => order.id),
+      ])),
+      error: null,
+    };
+  }
+
+  return { ids: [], error: "Forbidden", status: 403 };
+}
+
+/**
+ * Checks the same role-specific order scope used by the order list before a
+ * detail or related endpoint returns order data.
  */
 export async function checkOrderViewAccess(
   supabase: ServiceClient,
   auth: AuthTokenPayload,
   orderId: string,
 ): Promise<OrderViewAccess> {
-  const { data: accessRaw, error: accessError } = await supabase
-    .from("orders")
-    .select(
-      "id, created_by, pickup_warehouse_id, delivery_warehouse_id, sender:contacts!orders_sender_id_fkey(user_id, phone), receiver:contacts!orders_receiver_id_fkey(user_id, phone), pickup_address:addresses!orders_pickup_address_id_fkey(province), delivery_address:addresses!orders_delivery_address_id_fkey(province)",
-    )
-    .eq("id", orderId)
-    .maybeSingle();
-  const access = accessRaw as OrderAccessRow | null;
-  if (accessError) return { allowed: false, error: accessError.message, status: 500 };
-  if (!access) return { allowed: false, error: "Order not found", status: 404 };
-
-  const { data: guestOrder, error: guestError } = await supabase.from("guest_orders")
-    .select("order_id").eq("order_id", orderId).maybeSingle();
-  if (guestError) return { allowed: false, error: guestError.message, status: 500 };
-  const isGuestOrder = Boolean(guestOrder);
-
-  const { data: viewer, error: viewerError } = await supabase
-    .from("users")
-    .select("phone, warehouse_id")
-    .eq("id", auth.userId)
-    .maybeSingle();
-  if (viewerError) return { allowed: false, error: viewerError.message, status: 500 };
-  if (!viewer) return { allowed: false, error: "Unauthorized", status: 401 };
-
-  if (auth.roleCode === RoleCode.DISPATCHER || auth.roleCode === RoleCode.WAREHOUSE_STAFF) {
-    const warehouseScope = await getUserOperationalScope(auth);
-    if (warehouseScope.error) return { allowed: false, error: warehouseScope.error, status: 500 };
-    if (!warehouseScope.warehouseId) return { allowed: false, error: "Tài khoản chưa được gán kho phụ trách", status: 409 };
-    const canViewByWarehouse = auth.roleCode === RoleCode.DISPATCHER
-      && warehouseScope.warehouseLevel === "PROVINCE"
-      ? normalizeArea(access.pickup_address?.province) === normalizeArea(warehouseScope.province)
-        || normalizeArea(access.delivery_address?.province) === normalizeArea(warehouseScope.province)
-      : access.pickup_warehouse_id === warehouseScope.warehouseId
-        || access.delivery_warehouse_id === warehouseScope.warehouseId;
-    if (!canViewByWarehouse) return { allowed: false, error: "Đơn hàng không thuộc kho phụ trách của bạn", status: 403 };
+  const scope = await getVisibleOrderIds(supabase, auth);
+  if (scope.error) {
+    return { allowed: false, error: scope.error, status: scope.status ?? 500 };
   }
-
-  const viewerPhone = typeof viewer.phone === "string" ? normalizePhone(viewer.phone) : "";
-  const isPhoneParticipant =
-    viewerPhone.length > 0 &&
-    (normalizePhone(access.sender?.phone ?? "") === viewerPhone ||
-      normalizePhone(access.receiver?.phone ?? "") === viewerPhone);
-
-  const isCustomerParticipant =
-    access.created_by === auth.userId ||
-    access.sender?.user_id === auth.userId ||
-    access.receiver?.user_id === auth.userId ||
-    (!isGuestOrder && isPhoneParticipant);
-  const canConfirmReceipt = auth.roleCode === RoleCode.ADMIN || (
-    auth.roleCode === RoleCode.CUSTOMER && (
-      access.receiver?.user_id === auth.userId ||
-      (!isGuestOrder && viewerPhone.length > 0 && normalizePhone(access.receiver?.phone ?? "") === viewerPhone)
-    )
-  );
-
-  let isAssignedDeliveryStaff = false;
-  if (auth.roleCode === RoleCode.DELIVERY_STAFF) {
-    const { data: delivery, error: deliveryError } = await supabase
-      .from("deliveries")
-      .select("id")
-      .eq("order_id", orderId)
-      .eq("delivery_staff_id", auth.userId)
-      .limit(1)
-      .maybeSingle();
-    if (deliveryError) return { allowed: false, error: deliveryError.message, status: 500 };
-    isAssignedDeliveryStaff = Boolean(delivery);
-  }
-
-  if (!canViewAllOrders(auth.roleCode) && !isCustomerParticipant && !isAssignedDeliveryStaff) {
+  if (scope.ids && !scope.ids.includes(orderId)) {
     return { allowed: false, error: "Forbidden", status: 403 };
   }
-  return { allowed: true, canConfirmReceipt, isCustomerParticipant };
+
+  const { data: accessRaw, error: accessError } = await supabase
+    .from("orders")
+    .select("id, receiver_user_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (accessError) return { allowed: false, error: accessError.message, status: 500 };
+  const access = accessRaw as OrderAccessRow | null;
+  if (!access) return { allowed: false, error: "Order not found", status: 404 };
+
+  let canConfirmReceipt = auth.roleCode === RoleCode.ADMIN;
+  if (auth.roleCode === RoleCode.CUSTOMER) {
+    canConfirmReceipt = access.receiver_user_id === auth.userId;
+  }
+
+  return {
+    allowed: true,
+    canConfirmReceipt,
+    isCustomerParticipant: auth.roleCode === RoleCode.CUSTOMER,
+  };
 }
