@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import type { Json } from "@delivery/database";
 import {
   BlockchainEventType,
   ContactType,
@@ -42,14 +43,16 @@ const createOrderSchema = z.object({
   items: z
     .array(
       z.object({
-        item_name: z.string().min(1),
+        item_name: z.string().trim().min(1),
         item_type: z.string().optional(),
         quantity: z.number().int().positive().max(10000).default(1),
         weight: z.number().finite().positive().max(10000).optional(),
         length: z.number().finite().positive().max(1000).optional(),
         width: z.number().finite().positive().max(1000).optional(),
         height: z.number().finite().positive().max(1000).optional(),
-        declared_value: z.number().optional(),
+        declared_value: z.number().finite().nonnegative().max(999999999999.99)
+          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Giá trị khai báo tối đa hai chữ số thập phân")
+          .optional(),
         note: z.string().optional(),
       }),
     )
@@ -291,6 +294,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  const parsedIdempotencyKey = z.string().uuid().safeParse(request.headers.get("Idempotency-Key"));
+  if (!parsedIdempotencyKey.success) return fail("Thiếu hoặc sai khóa chống tạo đơn trùng", 400);
+
   if (!canCreateOrder(auth.roleCode)) return fail("Forbidden", 403);
 
   const parsed = createOrderSchema.safeParse(await request.json());
@@ -388,36 +394,70 @@ export async function POST(request: NextRequest) {
   if (statusError || !createdStatus) return fail("Order status seed missing", 500);
 
   const trackingCode = generateTrackingCode();
+  const orderPayload = {
+    tracking_code: trackingCode,
+    qr_code: trackingCode,
+    sender_id: parsed.data.sender_id,
+    receiver_id: parsed.data.receiver_id,
+    pickup_address_id: parsed.data.pickup_address_id,
+    delivery_address_id: parsed.data.delivery_address_id,
+    pickup_warehouse_id: pickupWarehouse.id,
+    delivery_warehouse_id: deliveryWarehouse.id,
+    service_type: parsed.data.service_type,
+    cod_amount: parsed.data.cod_amount,
+    total_fee: shippingFee,
+    shipping_fee_payer: parsed.data.shipping_fee_payer ?? null,
+    shipping_payment_method: parsed.data.shipping_payment_method ?? null,
+    note: parsed.data.note ?? null,
+    status_id: createdStatus.id,
+    created_by: auth.userId,
+  };
+  const normalizedRequest = {
+    sender_id: parsed.data.sender_id.toLowerCase(),
+    receiver_id: parsed.data.receiver_id.toLowerCase(),
+    pickup_address_id: parsed.data.pickup_address_id.toLowerCase(),
+    delivery_address_id: parsed.data.delivery_address_id.toLowerCase(),
+    service_type: parsed.data.service_type,
+    cod_amount: parsed.data.cod_amount,
+    shipping_fee_payer: parsed.data.shipping_fee_payer ?? null,
+    shipping_payment_method: parsed.data.shipping_payment_method ?? null,
+    note: parsed.data.note?.trim() || null,
+    items: parsed.data.items.map((item) => ({
+      item_name: item.item_name.trim(),
+      item_type: item.item_type?.trim() || null,
+      quantity: item.quantity,
+      weight: item.weight ?? null,
+      length: item.length ?? null,
+      width: item.width ?? null,
+      height: item.height ?? null,
+      declared_value: item.declared_value ?? null,
+      note: item.note?.trim() || null,
+    })),
+  };
+  const requestHash = createHash("sha256").update(JSON.stringify(normalizedRequest)).digest("hex");
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      tracking_code: trackingCode,
-      qr_code: trackingCode,
-      sender_id: parsed.data.sender_id,
-      receiver_id: parsed.data.receiver_id,
-      pickup_address_id: parsed.data.pickup_address_id,
-      delivery_address_id: parsed.data.delivery_address_id,
-      pickup_warehouse_id: pickupWarehouse.id,
-      delivery_warehouse_id: deliveryWarehouse.id,
-      service_type: parsed.data.service_type,
-      cod_amount: parsed.data.cod_amount,
-      total_fee: shippingFee,
-      shipping_fee_payer: parsed.data.shipping_fee_payer ?? null,
-      shipping_payment_method: parsed.data.shipping_payment_method ?? null,
-      shipping_payment_status: "pending",
-      note: parsed.data.note ?? null,
-      status_id: createdStatus.id,
-      created_by: auth.userId,
-    })
-    .select("id, tracking_code, qr_code, pickup_warehouse_id, delivery_warehouse_id")
-    .single();
-
-  if (orderError) return fail(orderError.message, 500);
-
-  const items = parsed.data.items.map((item) => ({ ...item, order_id: order.id }));
-  const { error: itemsError } = await supabase.from("order_items").insert(items);
-  if (itemsError) return fail(itemsError.message, 500);
+  const { data: createdRows, error: createError } = await supabase.rpc("create_order_with_items", {
+    p_order: orderPayload as Json,
+    p_items: parsed.data.items as Json,
+    p_idempotency_key: parsedIdempotencyKey.data,
+    p_request_hash: requestHash,
+  });
+  if (createError) {
+    if (createError.message.includes("ORDER_IDEMPOTENCY_KEY_REUSED")) {
+      return fail("Khóa tạo đơn này đã được dùng với dữ liệu khác. Hãy kiểm tra danh sách đơn trước khi thử tạo đơn mới.", 409);
+    }
+    console.error("Atomic order creation failed", { code: createError.code, message: createError.message });
+    return fail("Không thể tạo đơn hàng và sản phẩm. Vui lòng thử lại bằng cùng một yêu cầu.", 500);
+  }
+  const order = createdRows?.[0];
+  if (!order) return fail("Database không trả về đơn hàng đã tạo", 500);
+  const orderResponse = {
+    id: order.id,
+    tracking_code: order.tracking_code,
+    qr_code: order.qr_code,
+    pickup_warehouse_id: order.pickup_warehouse_id,
+    delivery_warehouse_id: order.delivery_warehouse_id,
+  };
 
   await queueBlockchainEvent({
     orderId: order.id,
@@ -446,14 +486,14 @@ export async function POST(request: NextRequest) {
       error: routeResult.error,
     });
     return ok({
-      ...order,
+      ...orderResponse,
       route_status: "PENDING_REPAIR",
       route_warning: routeResult.error,
     }, 201);
   }
 
   return ok({
-    ...order,
+    ...orderResponse,
     route_status: "AUTO_PLANNED",
     route_strategy: routeResult.data?.strategy ?? null,
   }, 201);

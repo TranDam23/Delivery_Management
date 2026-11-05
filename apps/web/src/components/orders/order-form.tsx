@@ -2,7 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, MapPin, Plus, Truck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ContactType,
   canBeReceiver,
@@ -20,7 +20,7 @@ import { SelectField, TextField } from "@/components/ui/field";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { usePaymentAvailability } from "@/lib/use-payment-availability";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
@@ -91,6 +91,69 @@ const INITIAL_FORM: FormState = {
   codAmount: "0",
   note: "",
 };
+
+const CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY = "delivertrust:create-order-idempotency-attempt";
+
+interface StoredOrderAttempt {
+  key: string;
+  fingerprint: string;
+}
+
+function readStoredOrderAttempt(): StoredOrderAttempt | null {
+  for (const getStorage of [() => window.sessionStorage, () => window.localStorage]) {
+    try {
+      const storage = getStorage();
+      const raw = storage.getItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Partial<StoredOrderAttempt>;
+      if (
+        typeof parsed.key === "string"
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.key)
+        && typeof parsed.fingerprint === "string"
+        && /^[0-9a-f]{64}$/.test(parsed.fingerprint)
+      ) {
+        return { key: parsed.key, fingerprint: parsed.fingerprint };
+      }
+    } catch {
+      // Try the other storage; an unavailable browser storage is not a submit failure.
+    }
+  }
+  return null;
+}
+
+function persistOrderAttempt(attempt: StoredOrderAttempt): boolean {
+  const value = JSON.stringify(attempt);
+  let persisted = false;
+  for (const getStorage of [() => window.sessionStorage, () => window.localStorage]) {
+    try {
+      const storage = getStorage();
+      storage.setItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY, value);
+      persisted = true;
+    } catch {
+      // Try the other browser storage, then keep the attempt in memory.
+    }
+  }
+  return persisted;
+}
+
+function clearStoredOrderAttempt(key: string): void {
+  for (const getStorage of [() => window.sessionStorage, () => window.localStorage]) {
+    try {
+      const storage = getStorage();
+      const current = storage.getItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY);
+      if (current && (JSON.parse(current) as Partial<StoredOrderAttempt>).key === key) {
+        storage.removeItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY);
+      }
+    } catch {
+      // Clearing best-effort storage must not replace the API result.
+    }
+  }
+}
+
+async function fingerprintOrderRequest(requestBody: string): Promise<string> {
+  const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(requestBody));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 const SERVICE_OPTIONS = [
   { value: "standard", label: "Tiêu chuẩn" },
@@ -288,6 +351,8 @@ export function NewOrderPage(): React.JSX.Element {
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const submitLockRef = useRef(false);
+  const idempotencyAttemptRef = useRef<StoredOrderAttempt | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -341,53 +406,56 @@ export function NewOrderPage(): React.JSX.Element {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setSubmitting(true);
     setFormError(null);
 
-    const quantity = numericValue(form.quantity);
-    const codAmount = numericValue(form.codAmount);
-    const declaredValue = numericValue(form.declaredValue);
-
-    if (senderSource === "addressBook" && !selectedSender) {
-      setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
-      return;
-    }
-    if (receiverSource === "addressBook" && !selectedReceiver) {
-      setFormError("Vui lòng chọn người nhận trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
-      return;
-    }
-    const senderManualError = senderSource === "manual" ? validateManualContact(manualSender, "người gửi") : null;
-    if (senderManualError) {
-      setFormError(senderManualError);
-      return;
-    }
-    const receiverManualError = receiverSource === "manual" ? validateManualContact(manualReceiver, "người nhận") : null;
-    if (receiverManualError) {
-      setFormError(receiverManualError);
-      return;
-    }
-    if (senderSource === "addressBook" && !senderAddress) {
-      setFormError("Vui lòng chọn một địa chỉ lấy hàng trong sổ địa chỉ.");
-      return;
-    }
-    if (receiverSource === "addressBook" && !receiverAddress) {
-      setFormError("Vui lòng chọn một địa chỉ giao hàng trong sổ địa chỉ.");
-      return;
-    }
-    if (!form.itemName.trim()) {
-      setFormError("Vui lòng nhập tên hàng hóa.");
-      return;
-    }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      setFormError("Số lượng phải là số nguyên lớn hơn 0.");
-      return;
-    }
-    if (weight < 0 || codAmount < 0 || declaredValue < 0) {
-      setFormError("Khối lượng, giá trị khai báo và COD không được âm.");
-      return;
-    }
-
-    setSubmitting(true);
+    let orderCreated = false;
     try {
+      const quantity = numericValue(form.quantity);
+      const codAmount = numericValue(form.codAmount);
+      const declaredValue = numericValue(form.declaredValue);
+
+      if (senderSource === "addressBook" && !selectedSender) {
+        setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
+        return;
+      }
+      if (receiverSource === "addressBook" && !selectedReceiver) {
+        setFormError("Vui lòng chọn người nhận trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
+        return;
+      }
+      const senderManualError = senderSource === "manual" ? validateManualContact(manualSender, "người gửi") : null;
+      if (senderManualError) {
+        setFormError(senderManualError);
+        return;
+      }
+      const receiverManualError = receiverSource === "manual" ? validateManualContact(manualReceiver, "người nhận") : null;
+      if (receiverManualError) {
+        setFormError(receiverManualError);
+        return;
+      }
+      if (senderSource === "addressBook" && !senderAddress) {
+        setFormError("Vui lòng chọn một địa chỉ lấy hàng trong sổ địa chỉ.");
+        return;
+      }
+      if (receiverSource === "addressBook" && !receiverAddress) {
+        setFormError("Vui lòng chọn một địa chỉ giao hàng trong sổ địa chỉ.");
+        return;
+      }
+      if (!form.itemName.trim()) {
+        setFormError("Vui lòng nhập tên hàng hóa.");
+        return;
+      }
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        setFormError("Số lượng phải là số nguyên lớn hơn 0.");
+        return;
+      }
+      if (weight < 0 || codAmount < 0 || declaredValue < 0) {
+        setFormError("Khối lượng, giá trị khai báo và COD không được âm.");
+        return;
+      }
+
       const manualContactCache = new Map<string, ContactWithDefaultAddress>();
       const sender = senderSource === "manual"
         ? await ensureManualContact({ input: manualSender, type: ContactType.SENDER, contacts, cache: manualContactCache })
@@ -417,35 +485,83 @@ export function NewOrderPage(): React.JSX.Element {
         return;
       }
 
+      const requestBody = JSON.stringify({
+        sender_id: sender.id,
+        receiver_id: receiver.id,
+        pickup_address_id: pickupAddress.id,
+        delivery_address_id: deliveryAddress.id,
+        service_type: form.serviceType,
+        cod_amount: codAmount,
+        shipping_fee_payer: shippingFeePayer,
+        shipping_payment_method: shippingPaymentMethod,
+        note: form.note.trim() || undefined,
+        items: [{
+          item_name: form.itemName.trim(),
+          item_type: form.itemType.trim() || undefined,
+          quantity,
+          weight: form.weight.trim() ? weight : undefined,
+          length: numericValue(form.length) > 0 ? numericValue(form.length) : undefined,
+          width: numericValue(form.width) > 0 ? numericValue(form.width) : undefined,
+          height: numericValue(form.height) > 0 ? numericValue(form.height) : undefined,
+          declared_value: form.declaredValue.trim() ? declaredValue : undefined,
+        }],
+      });
+      const fingerprint = await fingerprintOrderRequest(requestBody);
+      const storedAttempt = idempotencyAttemptRef.current ?? readStoredOrderAttempt();
+      if (storedAttempt && storedAttempt.fingerprint !== fingerprint) {
+        setFormError("Kết quả yêu cầu tạo đơn trước chưa xác định. Hãy giữ nguyên nội dung và gửi lại yêu cầu đó để kiểm tra kết quả trước khi tạo đơn khác.");
+        return;
+      }
+
+      const idempotencyKey = storedAttempt?.key ?? window.crypto.randomUUID();
+      const attempt = { key: idempotencyKey, fingerprint };
+      idempotencyAttemptRef.current = attempt;
+      const persisted = persistOrderAttempt(attempt);
       const created = await apiFetch<{ id: string }>("/api/orders", {
         method: "POST",
-        body: JSON.stringify({
-          sender_id: sender.id,
-          receiver_id: receiver.id,
-          pickup_address_id: pickupAddress.id,
-          delivery_address_id: deliveryAddress.id,
-          service_type: form.serviceType,
-          cod_amount: codAmount,
-          shipping_fee_payer: shippingFeePayer,
-          shipping_payment_method: shippingPaymentMethod,
-          note: form.note.trim() || undefined,
-          items: [{
-            item_name: form.itemName.trim(),
-            item_type: form.itemType.trim() || undefined,
-            quantity,
-            weight: form.weight.trim() ? weight : undefined,
-            length: numericValue(form.length) > 0 ? numericValue(form.length) : undefined,
-            width: numericValue(form.width) > 0 ? numericValue(form.width) : undefined,
-            height: numericValue(form.height) > 0 ? numericValue(form.height) : undefined,
-            declared_value: form.declaredValue.trim() ? declaredValue : undefined,
-          }],
-        }),
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: requestBody,
+      }).catch((caught: unknown) => {
+        const isIdempotencyConflict = caught instanceof ApiError
+          && caught.status === 409
+          && caught.message.includes("Khóa tạo đơn này đã được dùng với dữ liệu khác");
+        if (
+          caught instanceof ApiError
+          && caught.status >= 400
+          && caught.status < 500
+          && !isIdempotencyConflict
+        ) {
+          idempotencyAttemptRef.current = null;
+          clearStoredOrderAttempt(idempotencyKey);
+        }
+        throw caught;
       });
+      orderCreated = true;
+      idempotencyAttemptRef.current = null;
+      clearStoredOrderAttempt(idempotencyKey);
+      if (!persisted) {
+        console.warn("Could not persist the order idempotency key; retry safety lasts only while this page remains open.");
+      }
       router.push(`/orders/${created.id}`);
     } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : "Không tạo được đơn hàng");
+      const message = caught instanceof Error ? caught.message : "Không tạo được đơn hàng";
+      const attempt = idempotencyAttemptRef.current;
+      const persisted = attempt ? readStoredOrderAttempt()?.key === attempt.key : true;
+      const isIdempotencyConflict = caught instanceof ApiError
+        && caught.status === 409
+        && caught.message.includes("Khóa tạo đơn này đã được dùng với dữ liệu khác");
+      setFormError(
+        isIdempotencyConflict
+          ? "Khóa tạo đơn bị xung đột với dữ liệu đã gửi trước đó. Hãy kiểm tra danh sách đơn hàng trước khi tiếp tục; không tạo yêu cầu mới bằng khóa khác cho đến khi xác định được kết quả."
+          : attempt && !persisted
+          ? `${message} Kết quả chưa xác định; khóa yêu cầu chỉ còn trong trang hiện tại vì trình duyệt không cho phép lưu sessionStorage/localStorage. Hãy thử lại cùng nội dung và không tải lại trang.`
+          : message,
+      );
     } finally {
-      setSubmitting(false);
+      if (!orderCreated) {
+        submitLockRef.current = false;
+        setSubmitting(false);
+      }
     }
   }
 

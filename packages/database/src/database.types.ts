@@ -932,6 +932,8 @@ export type Database = {
           cod_amount: number
           created_at: string
           created_by: string
+          creation_idempotency_key: string | null
+          creation_request_hash: string | null
           delivery_address_id: string
           delivery_warehouse_id: string | null
           expected_delivery_date: string | null
@@ -966,6 +968,8 @@ export type Database = {
           cod_amount?: number
           created_at?: string
           created_by: string
+          creation_idempotency_key?: string | null
+          creation_request_hash?: string | null
           delivery_address_id: string
           delivery_warehouse_id?: string | null
           expected_delivery_date?: string | null
@@ -1000,6 +1004,8 @@ export type Database = {
           cod_amount?: number
           created_at?: string
           created_by?: string
+          creation_idempotency_key?: string | null
+          creation_request_hash?: string | null
           delivery_address_id?: string
           delivery_warehouse_id?: string | null
           expected_delivery_date?: string | null
@@ -1641,6 +1647,37 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      confirm_receiver_delivery_atomic: {
+        Args: {
+          p_confirmed_at: string
+          p_delivery_id: string
+          p_enqueue_blockchain: boolean
+          p_event_data_hash: string | null
+          p_event_payload: Json | null
+          p_event_type: string | null
+          p_note: string | null
+          p_order_id: string
+          p_user_role: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      create_order_with_items: {
+        Args: {
+          p_idempotency_key: string
+          p_items: Json
+          p_order: Json
+          p_request_hash: string
+        }
+        Returns: {
+          delivery_warehouse_id: string
+          id: string
+          pickup_warehouse_id: string
+          qr_code: string
+          tracking_code: string
+          was_created: boolean
+        }[]
+      }
       assign_delivery_atomic: {
         Args: {
           p_assigned_by: string
