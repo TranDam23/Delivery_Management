@@ -38,6 +38,7 @@ interface FormState {
   width: string;
   height: string;
   declaredValue: string;
+  itemNote: string;
   codAmount: string;
   note: string;
 }
@@ -88,6 +89,7 @@ const INITIAL_FORM: FormState = {
   width: "",
   height: "",
   declaredValue: "",
+  itemNote: "",
   codAmount: "0",
   note: "",
 };
@@ -416,6 +418,8 @@ export function NewOrderPage(): React.JSX.Element {
       const quantity = numericValue(form.quantity);
       const codAmount = numericValue(form.codAmount);
       const declaredValue = numericValue(form.declaredValue);
+      const hasMoreThanTwoDecimals = (value: number): boolean =>
+        Math.abs(value * 100 - Math.round(value * 100)) >= 0.000001;
 
       if (senderSource === "addressBook" && !selectedSender) {
         setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
@@ -443,16 +447,33 @@ export function NewOrderPage(): React.JSX.Element {
         setFormError("Vui lòng chọn một địa chỉ giao hàng trong sổ địa chỉ.");
         return;
       }
-      if (!form.itemName.trim()) {
-        setFormError("Vui lòng nhập tên hàng hóa.");
+      if (!form.itemName.trim() || form.itemName.trim().length > 200) {
+        setFormError("Tên hàng hóa phải có từ 1 đến 200 ký tự.");
         return;
       }
-      if (!Number.isInteger(quantity) || quantity < 1) {
-        setFormError("Số lượng phải là số nguyên lớn hơn 0.");
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) {
+        setFormError("Số lượng phải là số nguyên từ 1 đến 10.000.");
         return;
       }
-      if (weight < 0 || codAmount < 0 || declaredValue < 0) {
-        setFormError("Khối lượng, giá trị khai báo và COD không được âm.");
+      if (
+        (form.weight.trim() && (weight <= 0 || weight > 10000 || hasMoreThanTwoDecimals(weight)))
+        || codAmount < 0
+        || codAmount > 999999999999.99
+        || hasMoreThanTwoDecimals(codAmount)
+        || declaredValue < 0
+        || declaredValue > 999999999999.99
+        || hasMoreThanTwoDecimals(declaredValue)
+      ) {
+        setFormError("Khối lượng, giá trị khai báo và COD phải nằm trong giới hạn cho phép, tối đa hai chữ số thập phân.");
+        return;
+      }
+      const dimensions = [form.length, form.width, form.height];
+      if (dimensions.some((value) => value.trim() && (numericValue(value) <= 0 || numericValue(value) > 1000 || hasMoreThanTwoDecimals(numericValue(value))))) {
+        setFormError("Mỗi chiều kích thước phải lớn hơn 0, không vượt quá 1.000 cm và có tối đa hai chữ số thập phân.");
+        return;
+      }
+      if (form.itemNote.trim().length > 1000 || form.note.trim().length > 1000) {
+        setFormError("Ghi chú không được vượt quá 1.000 ký tự.");
         return;
       }
 
@@ -504,6 +525,7 @@ export function NewOrderPage(): React.JSX.Element {
           width: numericValue(form.width) > 0 ? numericValue(form.width) : undefined,
           height: numericValue(form.height) > 0 ? numericValue(form.height) : undefined,
           declared_value: form.declaredValue.trim() ? declaredValue : undefined,
+          note: form.itemNote.trim() || undefined,
         }],
       });
       const fingerprint = await fingerprintOrderRequest(requestBody);
@@ -708,26 +730,30 @@ export function NewOrderPage(): React.JSX.Element {
           <Card>
             <CardLabel>Hàng hóa</CardLabel>
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
-              <TextField label="Tên hàng hóa" required value={form.itemName} placeholder="Ví dụ: Hồ sơ hợp đồng" onChange={(event) => update("itemName", event.target.value)} />
-              <TextField label="Loại hàng" value={form.itemType} placeholder="Hồ sơ, quần áo..." onChange={(event) => update("itemType", event.target.value)} />
+              <TextField label="Tên hàng hóa" required value={form.itemName} maxLength={200} placeholder="Ví dụ: Hồ sơ hợp đồng" onChange={(event) => update("itemName", event.target.value)} />
+              <TextField label="Loại hàng" value={form.itemType} maxLength={100} placeholder="Hồ sơ, quần áo..." onChange={(event) => update("itemType", event.target.value)} />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <TextField label="Số lượng" type="number" min="1" step="1" required value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
-              <TextField label="Khối lượng (kg)" type="number" min="0" step="0.01" value={form.weight} placeholder="Không bắt buộc" onChange={(event) => update("weight", event.target.value)} />
-              <TextField label="Giá trị khai báo" type="number" min="0" step="1000" value={form.declaredValue} placeholder="Không bắt buộc" onChange={(event) => update("declaredValue", event.target.value)} />
+              <TextField label="Số lượng" type="number" min="1" max="10000" step="1" required value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
+              <TextField label="Khối lượng (kg)" type="number" min="0" max="10000" step="0.01" value={form.weight} placeholder="Không bắt buộc" onChange={(event) => update("weight", event.target.value)} />
+              <TextField label="Giá trị khai báo" type="number" min="0" max="999999999999.99" step="0.01" value={form.declaredValue} placeholder="Không bắt buộc" onChange={(event) => update("declaredValue", event.target.value)} />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <TextField label="Chiều dài (cm)" type="number" min="0" step="0.1" value={form.length} placeholder="Không bắt buộc" onChange={(event) => update("length", event.target.value)} />
-              <TextField label="Chiều rộng (cm)" type="number" min="0" step="0.1" value={form.width} placeholder="Không bắt buộc" onChange={(event) => update("width", event.target.value)} />
-              <TextField label="Chiều cao (cm)" type="number" min="0" step="0.1" value={form.height} placeholder="Không bắt buộc" hint="Nhập đủ 3 chiều: kiện cồng kềnh được tính cước theo khối lượng quy đổi (dài×rộng×cao/6000)." onChange={(event) => update("height", event.target.value)} />
+              <TextField label="Chiều dài (cm)" type="number" min="0" max="1000" step="0.1" value={form.length} placeholder="Không bắt buộc" onChange={(event) => update("length", event.target.value)} />
+              <TextField label="Chiều rộng (cm)" type="number" min="0" max="1000" step="0.1" value={form.width} placeholder="Không bắt buộc" onChange={(event) => update("width", event.target.value)} />
+              <TextField label="Chiều cao (cm)" type="number" min="0" max="1000" step="0.1" value={form.height} placeholder="Không bắt buộc" hint="Nhập đủ 3 chiều: kiện cồng kềnh được tính cước theo khối lượng quy đổi (dài×rộng×cao/6000)." onChange={(event) => update("height", event.target.value)} />
             </div>
+            <label className="mt-4 flex flex-col gap-[6px]">
+              <span className="text-[11px] font-medium text-dt-muted">Ghi chú mặt hàng</span>
+              <textarea value={form.itemNote} maxLength={1000} onChange={(event) => update("itemNote", event.target.value)} placeholder="Lưu ý riêng cho mặt hàng này..." rows={2} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
+            </label>
           </Card>
 
           <Card>
             <CardLabel>Ghi chú</CardLabel>
             <label className="flex flex-col gap-[6px]">
               <span className="text-[11px] font-medium text-dt-muted">Lưu ý cho đơn hàng</span>
-              <textarea value={form.note} onChange={(event) => update("note", event.target.value)} placeholder="Ví dụ: Gọi trước khi giao..." rows={4} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
+              <textarea value={form.note} maxLength={1000} onChange={(event) => update("note", event.target.value)} placeholder="Ví dụ: Gọi trước khi giao..." rows={4} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
             </label>
           </Card>
         </div>
@@ -738,7 +764,7 @@ export function NewOrderPage(): React.JSX.Element {
             <SelectField label="Loại dịch vụ" required value={form.serviceType} onChange={(event) => update("serviceType", event.target.value)}>
               {SERVICE_OPTIONS.map((option) => <option key={option.value} value={option.value} className="bg-dt-panel2">{option.label}</option>)}
             </SelectField>
-            <TextField label="COD cần thu hộ" type="number" min="0" step="1000" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
+            <TextField label="COD cần thu hộ" type="number" min="0" max="999999999999.99" step="0.01" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
             <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} feeNote={quote && !quote.available ? quote.message : null} availability={paymentAvailability} />
           </Card>
 

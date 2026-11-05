@@ -633,12 +633,16 @@ export type Database = {
           event_time: string
           from_status_id: string | null
           id: string
+          idempotency_key: string | null
           image_url: string | null
+          idempotency_result: Json | null
+          leg_attempt_no: number | null
           location_lat: number | null
           location_lng: number | null
           note: string | null
           order_id: string
           performed_by: string
+          request_hash: string | null
           status_id: string
         }
         Insert: {
@@ -646,12 +650,16 @@ export type Database = {
           event_time?: string
           from_status_id?: string | null
           id?: string
+          idempotency_key?: string | null
           image_url?: string | null
+          idempotency_result?: Json | null
+          leg_attempt_no?: number | null
           location_lat?: number | null
           location_lng?: number | null
           note?: string | null
           order_id: string
           performed_by: string
+          request_hash?: string | null
           status_id: string
         }
         Update: {
@@ -659,12 +667,16 @@ export type Database = {
           event_time?: string
           from_status_id?: string | null
           id?: string
+          idempotency_key?: string | null
           image_url?: string | null
+          idempotency_result?: Json | null
+          leg_attempt_no?: number | null
           location_lat?: number | null
           location_lng?: number | null
           note?: string | null
           order_id?: string
           performed_by?: string
+          request_hash?: string | null
           status_id?: string
         }
         Relationships: [
@@ -1647,6 +1659,36 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      record_delivery_event_atomic: {
+        Args: {
+          p_actor_id: string
+          p_actor_role_code: string
+          p_cod_collected: boolean
+          p_delivery_id: string
+          p_expected_attempt_no: number
+          p_idempotency_key: string
+          p_image_url: string | null
+          p_location_lat: number | null
+          p_location_lng: number | null
+          p_note: string | null
+          p_request_hash: string
+          p_status_code: string
+        }
+        Returns: Json
+      }
+      search_orders_page: {
+        Args: {
+          p_page: number
+          p_page_size: number
+          p_search: string | null
+          p_status_code: string | null
+          p_visible_order_ids: string[] | null
+        }
+        Returns: {
+          order_id: string | null
+          total_count: number
+        }[]
+      }
       confirm_receiver_delivery_atomic: {
         Args: {
           p_confirmed_at: string

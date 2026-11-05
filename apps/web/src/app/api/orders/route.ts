@@ -7,20 +7,12 @@ import {
   ContactType,
   OrderStatusCode,
   RoleCode,
-  WarehouseLevelCode,
-  WarehouseStatusCode,
   canBeReceiver,
   canBeSender,
-  normalizePhone,
-  type AuthTokenPayload,
 } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
-import {
-  getUserOperationalScope,
-  type OperationalWarehouseScope,
-} from "@/lib/dispatcher-scope";
 import { selectNearestWarehouse } from "@/lib/shipment-routing";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
 import { fetchActiveCommuneWarehouses } from "@/lib/warehouse-queries";
@@ -28,6 +20,7 @@ import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
 import { isQrPaymentMethod, shippingFeePayerSchema, shippingPaymentMethodSchema } from "@/lib/shipping-payment";
 import { calculateShippingFee, isServiceAvailable } from "@/lib/shipping-fee";
 import { zoneForProvinces } from "@/lib/shipping-zone";
+import { getVisibleOrderIds } from "@/lib/order-access";
 
 const createOrderSchema = z.object({
   sender_id: z.string().uuid(),
@@ -39,21 +32,29 @@ const createOrderSchema = z.object({
   // Both may be absent for an older browser tab during deployment. Never invent a payer.
   shipping_fee_payer: shippingFeePayerSchema.optional(),
   shipping_payment_method: shippingPaymentMethodSchema.optional(),
-  note: z.string().optional(),
+  note: z.string().trim().max(1000).optional().transform((value) => value || undefined),
   items: z
     .array(
       z.object({
-        item_name: z.string().trim().min(1),
-        item_type: z.string().optional(),
+        item_name: z.string().trim().min(1).max(200),
+        item_type: z.string().trim().max(100).optional().transform((value) => value || undefined),
         quantity: z.number().int().positive().max(10000).default(1),
-        weight: z.number().finite().positive().max(10000).optional(),
-        length: z.number().finite().positive().max(1000).optional(),
-        width: z.number().finite().positive().max(1000).optional(),
-        height: z.number().finite().positive().max(1000).optional(),
+        weight: z.number().finite().positive().max(10000)
+          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Khối lượng tối đa hai chữ số thập phân")
+          .optional(),
+        length: z.number().finite().positive().max(1000)
+          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Kích thước tối đa hai chữ số thập phân")
+          .optional(),
+        width: z.number().finite().positive().max(1000)
+          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Kích thước tối đa hai chữ số thập phân")
+          .optional(),
+        height: z.number().finite().positive().max(1000)
+          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Kích thước tối đa hai chữ số thập phân")
+          .optional(),
         declared_value: z.number().finite().nonnegative().max(999999999999.99)
           .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Giá trị khai báo tối đa hai chữ số thập phân")
           .optional(),
-        note: z.string().optional(),
+        note: z.string().trim().max(1000).optional().transform((value) => value || undefined),
       }),
     )
     .min(1),
@@ -65,8 +66,6 @@ function generateTrackingCode(): string {
   const suffix = randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
   return `DH${ymd}${suffix}`;
 }
-
-type ServiceSupabaseClient = ReturnType<typeof getSupabaseServiceClient>;
 
 interface OrderWarehouseCandidate {
   id: string;
@@ -80,129 +79,10 @@ interface OrderWarehouseCandidate {
   longitude?: number | null;
 }
 
-function canViewAllOrders(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.DISPATCHER;
-}
-
 function canCreateOrder(roleCode: RoleCode): boolean {
   // Don hang do khach hang tao (hoac admin tao ho cho nghiep vu noi bo).
   // Dieu phoi vien chi tiep nhan va dieu phoi don da duoc tao.
   return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER;
-}
-
-/**
- * Lay cac contact co cung so dien thoai voi tai khoan dang dang nhap.
- *
- * user_id tren contact chi phan anh so dia chi cua nguoi da tao contact. No
- * khong phai la tai khoan cua nguoi se nhan hang, vi vay luong gui/nhan phai
- * doi chieu qua phone de tai khoan nguoi nhan cung thay duoc don.
- */
-async function findCustomerContactIds(
-  supabase: ServiceSupabaseClient,
-  userId: string,
-): Promise<{ ids: string[]; error: string | null }> {
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("phone")
-    .eq("id", userId)
-    .maybeSingle();
-  if (userError) return { ids: [], error: userError.message };
-
-  const phone = typeof user?.phone === "string" ? normalizePhone(user.phone) : "";
-  const contactQuery = supabase.from("contacts").select("id");
-  const { data: contacts, error: contactsError } = phone
-    ? await contactQuery.eq("phone", phone)
-    : await contactQuery.eq("user_id", userId);
-
-  if (contactsError) return { ids: [], error: contactsError.message };
-  return { ids: (contacts ?? []).map((contact) => contact.id), error: null };
-}
-
-async function excludeGuestOrderIds(supabase: ServiceSupabaseClient, ids: string[]) {
-  if (ids.length === 0) return { ids, error: null as string | null };
-  const guestIds = new Set<string>();
-  for (let index = 0; index < ids.length; index += 500) {
-    const { data, error } = await supabase.from("guest_orders").select("order_id").in("order_id", ids.slice(index, index + 500));
-    if (error) return { ids: [] as string[], error: error.message };
-    data?.forEach((row) => guestIds.add(row.order_id));
-  }
-  return { ids: ids.filter((id) => !guestIds.has(id)), error: null as string | null };
-}
-
-/** Lay ID don ma tai khoan duoc phep xem, khong tra ve toan bo orders. */
-async function findVisibleOrderIds(
-  supabase: ServiceSupabaseClient,
-  auth: AuthTokenPayload,
-): Promise<{ ids: string[]; error: string | null }> {
-  const ids = new Set<string>();
-  const createdByUser = await supabase.from("orders").select("id").eq("created_by", auth.userId);
-  if (createdByUser.error) return { ids: [], error: createdByUser.error.message };
-  createdByUser.data?.forEach((order) => ids.add(order.id));
-
-  if (auth.roleCode === RoleCode.CUSTOMER) {
-    const customerContacts = await findCustomerContactIds(supabase, auth.userId);
-    if (customerContacts.error) return { ids: [], error: customerContacts.error };
-
-    const contactIds = customerContacts.ids;
-    if (contactIds.length > 0) {
-      const [sentOrders, receivedOrders] = await Promise.all([
-        supabase.from("orders").select("id").in("sender_id", contactIds),
-        supabase.from("orders").select("id").in("receiver_id", contactIds),
-      ]);
-      if (sentOrders.error) return { ids: [], error: sentOrders.error.message };
-      if (receivedOrders.error) return { ids: [], error: receivedOrders.error.message };
-      const nonGuest = await excludeGuestOrderIds(supabase, [
-        ...(sentOrders.data ?? []).map((order) => order.id),
-        ...(receivedOrders.data ?? []).map((order) => order.id),
-      ]);
-      if (nonGuest.error) return { ids: [], error: nonGuest.error };
-      nonGuest.ids.forEach((id) => ids.add(id));
-    }
-  }
-
-  if (auth.roleCode === RoleCode.DELIVERY_STAFF) {
-    const deliveries = await supabase
-      .from("deliveries")
-      .select("order_id")
-      .eq("delivery_staff_id", auth.userId);
-    if (deliveries.error) return { ids: [], error: deliveries.error.message };
-    deliveries.data?.forEach((delivery) => ids.add(delivery.order_id));
-  }
-
-  return { ids: Array.from(ids), error: null };
-}
-
-/** Lấy các đơn đã được gán vào kho đầu lấy hoặc kho đầu giao của điều phối viên. */
-async function findWarehouseOrderIds(
-  supabase: ServiceSupabaseClient,
-  scope: OperationalWarehouseScope,
-): Promise<{ ids: string[]; error: string | null }> {
-  let warehouseIds = scope.warehouseId ? [scope.warehouseId] : [];
-  if (scope.warehouseLevel === WarehouseLevelCode.PROVINCE && scope.province) {
-    const { data: provinceWarehouses, error: provinceWarehousesError } = await supabase
-      .from("warehouses")
-      .select("id")
-      .eq("province", scope.province)
-      .eq("status", WarehouseStatusCode.ACTIVE);
-    if (provinceWarehousesError) return { ids: [], error: provinceWarehousesError.message };
-    warehouseIds = (provinceWarehouses ?? []).map((warehouse) => warehouse.id);
-  }
-  if (warehouseIds.length === 0) return { ids: [], error: null };
-
-  const [pickupOrders, deliveryOrders] = await Promise.all([
-    supabase.from("orders").select("id").in("pickup_warehouse_id", warehouseIds),
-    supabase.from("orders").select("id").in("delivery_warehouse_id", warehouseIds),
-  ]);
-  if (pickupOrders.error) return { ids: [], error: pickupOrders.error.message };
-  if (deliveryOrders.error) return { ids: [], error: deliveryOrders.error.message };
-
-  return {
-    ids: Array.from(new Set([
-      ...(pickupOrders.data ?? []).map((order) => order.id),
-      ...(deliveryOrders.data ?? []).map((order) => order.id),
-    ])),
-    error: null,
-  };
 }
 
 /** GET /api/orders — danh sach don hang (loc theo status, phan trang). */
@@ -213,16 +93,23 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const requestedPage = Number(searchParams.get("page") ?? "1");
   const requestedPageSize = Number(searchParams.get("pageSize") ?? "20");
-  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 10000) : 1;
   const pageSize =
     Number.isInteger(requestedPageSize) && requestedPageSize > 0
       ? Math.min(requestedPageSize, 100)
       : 20;
   const statusCode = searchParams.get("status");
+  const searchTerm = searchParams.get("q")?.trim() || null;
+  if (searchTerm && searchTerm.length > 100) return fail("Từ khóa tìm kiếm không được vượt quá 100 ký tự", 400);
+  const validStatusCodes: string[] = Object.values(OrderStatusCode);
+  if (statusCode && !validStatusCodes.includes(statusCode)) {
+    return fail("Trạng thái đơn hàng không hợp lệ", 400);
+  }
   const direction = searchParams.get("direction");
   if (direction && direction !== "sent" && direction !== "received") {
     return fail("direction phải là sent hoặc received");
   }
+  const orderDirection = direction === "sent" || direction === "received" ? direction : undefined;
 
   const supabase = getSupabaseServiceClient();
   let query = supabase
@@ -237,69 +124,53 @@ export async function GET(request: NextRequest) {
        receiver:contacts!orders_receiver_id_fkey(id, name, phone),
        pickup_address:addresses!orders_pickup_address_id_fkey(id, recipient_name, phone, address_line, ward, district, province),
        delivery_address:addresses!orders_delivery_address_id_fkey(id, recipient_name, phone, address_line, ward, district, province)`,
-      { count: "exact" },
     )
     .order("created_at", { ascending: false })
-    .range((page - 1) * pageSize, page * pageSize - 1);
+    .order("id", { ascending: false });
 
-  if (auth.roleCode === RoleCode.CUSTOMER && direction) {
-    const customerContacts = await findCustomerContactIds(supabase, auth.userId);
-    if (customerContacts.error) return fail(customerContacts.error, 500);
-
-    const contactIds = customerContacts.ids;
-    if (contactIds.length === 0) {
-      return ok({ items: [], total: 0, page, pageSize });
-    }
-
-    const { data: contactOrders, error: contactOrdersError } = await supabase.from("orders")
-      .select("id").in(direction === "sent" ? "sender_id" : "receiver_id", contactIds);
-    if (contactOrdersError) return fail(contactOrdersError.message, 500);
-    const nonGuest = await excludeGuestOrderIds(supabase, (contactOrders ?? []).map((order) => order.id));
-    if (nonGuest.error) return fail(nonGuest.error, 500);
-    if (nonGuest.ids.length === 0) return ok({ items: [], total: 0, page, pageSize });
-    query = query.in("id", nonGuest.ids);
-  } else if (auth.roleCode === RoleCode.DISPATCHER) {
-    const warehouseScope = await getUserOperationalScope(auth);
-    if (warehouseScope.error) return fail(warehouseScope.error, 500);
-    if (!warehouseScope.warehouseId) return ok({ items: [], total: 0, page, pageSize });
-
-    const visible = await findWarehouseOrderIds(supabase, warehouseScope);
-    if (visible.error) return fail(visible.error, 500);
-    if (visible.ids.length === 0) {
-      return ok({ items: [], total: 0, page, pageSize });
-    }
-    query = query.in("id", visible.ids);
-  } else if (!canViewAllOrders(auth.roleCode)) {
-    const visible = await findVisibleOrderIds(supabase, auth);
-    if (visible.error) return fail(visible.error, 500);
-    if (visible.ids.length === 0) {
-      return ok({ items: [], total: 0, page, pageSize });
-    }
-    query = query.in("id", visible.ids);
+  const visible = await getVisibleOrderIds(supabase, auth, orderDirection);
+  if (visible.error) return fail(visible.error, visible.status ?? 500);
+  if (visible.ids) {
+    if (visible.ids.length === 0) return ok({ items: [], total: 0, page, pageSize });
   }
 
-  if (statusCode) {
-    query = query.eq("order_statuses.code", statusCode);
-  }
-  const trackingSearch = searchParams.get("q")?.trim().replace(/[^A-Za-z0-9-]/g, "");
-  if (trackingSearch) query = query.ilike("tracking_code", `%${trackingSearch}%`);
+  const { data: matchingRows, error: matchingError } = await supabase.rpc("search_orders_page", {
+    p_visible_order_ids: visible.ids,
+    p_status_code: statusCode || null,
+    p_search: searchTerm,
+    p_page: page,
+    p_page_size: pageSize,
+  });
+  if (matchingError) return fail(matchingError.message, 500);
+  const total = Number(matchingRows?.[0]?.total_count ?? 0);
+  const matchingIds = (matchingRows ?? [])
+    .map((row) => row.order_id)
+    .filter((id): id is string => id !== null);
+  if (matchingIds.length === 0) return ok({ items: [], total, page, pageSize });
+  query = query.in("id", matchingIds);
 
-  const { data, error, count } = await query;
+  const { data, error } = await query;
   if (error) return fail(error.message, 500);
 
-  return ok({ items: data, total: count ?? 0, page, pageSize });
+  return ok({ items: data, total, page, pageSize });
 }
 
 /** POST /api/orders — tao don hang moi, sinh tracking_code + QR, ghi su kien ORDER_CREATED. */
 export async function POST(request: NextRequest) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
+  if (!canCreateOrder(auth.roleCode)) return fail("Forbidden", 403);
+
   const parsedIdempotencyKey = z.string().uuid().safeParse(request.headers.get("Idempotency-Key"));
   if (!parsedIdempotencyKey.success) return fail("Thiếu hoặc sai khóa chống tạo đơn trùng", 400);
 
-  if (!canCreateOrder(auth.roleCode)) return fail("Forbidden", 403);
-
-  const parsed = createOrderSchema.safeParse(await request.json());
+  let requestBody: unknown;
+  try {
+    requestBody = await request.json();
+  } catch {
+    return fail("Dữ liệu đơn hàng không hợp lệ", 400);
+  }
+  const parsed = createOrderSchema.safeParse(requestBody);
   if (!parsed.success) return fail(parsed.error.message);
   if ((parsed.data.shipping_fee_payer === undefined) !== (parsed.data.shipping_payment_method === undefined)) {
     return fail("Cần chọn cả người trả và phương thức thanh toán phí vận chuyển.", 400);
@@ -481,6 +352,18 @@ export async function POST(request: NextRequest) {
   // thể sửa dữ liệu và dùng hàng đợi "đơn chưa phân tuyến" lập bổ sung.
   const routeResult = await createAutomaticShipmentRoute(order.id);
   if (routeResult.error) {
+    if (routeResult.alreadyExists) {
+      const { count, error: legsError } = await supabase
+        .from("shipment_legs")
+        .select("id", { count: "exact", head: true })
+        .eq("order_id", order.id);
+      if (!legsError && (count ?? 0) > 0) {
+        return ok({ ...orderResponse, route_status: "AUTO_PLANNED", route_strategy: null }, 201);
+      }
+      if (legsError) {
+        console.error("Could not verify existing shipment route", { orderId: order.id, error: legsError.message });
+      }
+    }
     console.error("Automatic shipment route planning failed", {
       orderId: order.id,
       error: routeResult.error,
