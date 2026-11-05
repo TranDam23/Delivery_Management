@@ -15,17 +15,21 @@ interface RouteParams {
 /** Public journey stays minimal; staff identities are visible only to authorized dispatch/admin users. */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { trackingCode } = await params;
-  if (!/^[A-Za-z0-9-]{8,40}$/.test(trackingCode)) return fail("Mã vận đơn không hợp lệ", 400);
+  const isQrToken = /^trk_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trackingCode);
+  if (!isQrToken && !/^[A-Za-z0-9-]{8,40}$/.test(trackingCode)) return fail("Mã vận đơn không hợp lệ", 400);
   const slot = await takePublicLookupSlot(request);
   if (slot === "limited") return fail("Bạn tra cứu quá nhiều lần. Vui lòng thử lại sau ít phút.", 429);
   if (slot === "unavailable") return fail("Chưa thể tra cứu vận đơn lúc này", 503);
 
   const supabase = getSupabaseServiceClient();
-  const { data: order, error: orderError } = await supabase
+  const orderQuery = supabase
     .from("orders")
-    .select("id, tracking_code, service_type, created_at, created_by, expected_delivery_date, order_statuses(code, name, is_final), pickup_warehouse:warehouses!orders_pickup_warehouse_id_fkey(province, region_code), delivery_warehouse:warehouses!orders_delivery_warehouse_id_fkey(province, region_code)")
-    .eq("tracking_code", trackingCode.toUpperCase())
-    .maybeSingle();
+    .select("id, tracking_code, service_type, created_at, created_by, expected_delivery_date, order_statuses(code, name, is_final), pickup_warehouse:warehouses!orders_pickup_warehouse_id_fkey(province, region_code), delivery_warehouse:warehouses!orders_delivery_warehouse_id_fkey(province, region_code)");
+  const { data: order, error: orderError } = await (
+    isQrToken
+      ? orderQuery.eq("public_tracking_token", trackingCode)
+      : orderQuery.eq("tracking_code", trackingCode.toUpperCase())
+  ).maybeSingle();
   if (orderError) return fail("Không thể tra cứu vận đơn lúc này", 500);
   if (!order) return fail("Không tìm thấy đơn hàng", 404);
 
@@ -36,14 +40,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const [deliveryResult, warehouseResult, blockchainResult] = await Promise.all([
     supabase.from("delivery_events")
-      .select("event_time, performed_by, order_statuses!delivery_events_status_id_fkey(code, name)")
-      .eq("order_id", order.id).order("event_time", { ascending: true }),
+      .select("id, event_time, performed_by, order_statuses!delivery_events_status_id_fkey(code, name)")
+      .eq("order_id", order.id).order("event_time", { ascending: true }).order("id", { ascending: true }),
     supabase.from("warehouse_events")
-      .select("event_time, event_type, performed_by, warehouse:warehouses!warehouse_events_warehouse_id_fkey(name, province)")
-      .eq("order_id", order.id).order("event_time", { ascending: true }),
+      .select("id, event_time, event_type, performed_by, warehouse:warehouses!warehouse_events_warehouse_id_fkey(name, province)")
+      .eq("order_id", order.id).order("event_time", { ascending: true }).order("id", { ascending: true }),
     supabase.from("blockchain_events")
       .select("event_type, transaction_hash, block_number, tx_status, created_at")
-      .eq("order_id", order.id).order("created_at", { ascending: true }),
+      .eq("order_id", order.id).order("created_at", { ascending: true }).order("id", { ascending: true }),
   ]);
   if (deliveryResult.error || warehouseResult.error || blockchainResult.error) {
     return fail("Không thể tải hành trình đơn hàng lúc này", 500);
@@ -61,9 +65,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  const timeline: TrackingTimelineEntry[] = [{
+  const timeline: Array<TrackingTimelineEntry & { sortId: string }> = [{
     kind: "created", time: order.created_at, label: "Đã tạo đơn", location: null,
-    actor: performerNames.get(order.created_by) ?? "Người tạo đơn",
+    actor: performerNames.get(order.created_by) ?? "Người tạo đơn", sortId: `created:${order.id}`,
   }];
   for (const event of deliveryEvents) {
     const status = relationValue(event.order_statuses);
@@ -71,6 +75,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     timeline.push({
       kind: "status", time: event.event_time, label: statusLabel(event.order_statuses), location: null,
       actor: event.performed_by ? performerNames.get(event.performed_by) ?? "Bộ phận vận hành" : "Hệ thống",
+      sortId: `delivery:${event.id}`,
     });
   }
   for (const event of warehouseEvents) {
@@ -80,9 +85,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       label: event.event_type === "INBOUND" ? "Nhập kho" : "Xuất kho",
       location: warehouse ? `${warehouse.name} · ${warehouse.province}` : null,
       actor: event.performed_by ? performerNames.get(event.performed_by) ?? "Nhân viên kho" : "Hệ thống",
+      sortId: `warehouse:${event.id}`,
     });
   }
-  timeline.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+  timeline.sort((a, b) => Date.parse(a.time) - Date.parse(b.time) || a.sortId.localeCompare(b.sortId));
 
   const zone = routeZone(relationValue(order.pickup_warehouse), relationValue(order.delivery_warehouse));
   const estimate = estimateDeliveryDate(order.created_at, order.service_type, order.expected_delivery_date, zone);
@@ -95,7 +101,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       estimate_source: estimate.source,
       order_statuses: order.order_statuses,
     },
-    timeline,
+    timeline: timeline.map(({ kind, time, label, location, actor }) => ({ kind, time, label, location, actor })),
     blockchainEvents: blockchainResult.data ?? [],
   });
   response.headers.set("Cache-Control", "private, no-store");

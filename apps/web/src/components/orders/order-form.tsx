@@ -2,7 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, MapPin, Plus, Truck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ContactType,
   canBeReceiver,
@@ -20,7 +20,7 @@ import { SelectField, TextField } from "@/components/ui/field";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { usePaymentAvailability } from "@/lib/use-payment-availability";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
@@ -38,6 +38,7 @@ interface FormState {
   width: string;
   height: string;
   declaredValue: string;
+  itemNote: string;
   codAmount: string;
   note: string;
 }
@@ -88,9 +89,73 @@ const INITIAL_FORM: FormState = {
   width: "",
   height: "",
   declaredValue: "",
+  itemNote: "",
   codAmount: "0",
   note: "",
 };
+
+const CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY = "delivertrust:create-order-idempotency-attempt";
+
+interface StoredOrderAttempt {
+  key: string;
+  fingerprint: string;
+}
+
+function readStoredOrderAttempt(): StoredOrderAttempt | null {
+  for (const getStorage of [() => window.sessionStorage, () => window.localStorage]) {
+    try {
+      const storage = getStorage();
+      const raw = storage.getItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Partial<StoredOrderAttempt>;
+      if (
+        typeof parsed.key === "string"
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.key)
+        && typeof parsed.fingerprint === "string"
+        && /^[0-9a-f]{64}$/.test(parsed.fingerprint)
+      ) {
+        return { key: parsed.key, fingerprint: parsed.fingerprint };
+      }
+    } catch {
+      // Try the other storage; an unavailable browser storage is not a submit failure.
+    }
+  }
+  return null;
+}
+
+function persistOrderAttempt(attempt: StoredOrderAttempt): boolean {
+  const value = JSON.stringify(attempt);
+  let persisted = false;
+  for (const getStorage of [() => window.sessionStorage, () => window.localStorage]) {
+    try {
+      const storage = getStorage();
+      storage.setItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY, value);
+      persisted = true;
+    } catch {
+      // Try the other browser storage, then keep the attempt in memory.
+    }
+  }
+  return persisted;
+}
+
+function clearStoredOrderAttempt(key: string): void {
+  for (const getStorage of [() => window.sessionStorage, () => window.localStorage]) {
+    try {
+      const storage = getStorage();
+      const current = storage.getItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY);
+      if (current && (JSON.parse(current) as Partial<StoredOrderAttempt>).key === key) {
+        storage.removeItem(CREATE_ORDER_IDEMPOTENCY_STORAGE_KEY);
+      }
+    } catch {
+      // Clearing best-effort storage must not replace the API result.
+    }
+  }
+}
+
+async function fingerprintOrderRequest(requestBody: string): Promise<string> {
+  const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(requestBody));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 const SERVICE_OPTIONS = [
   { value: "standard", label: "Tiêu chuẩn" },
@@ -275,6 +340,7 @@ async function ensureManualContact({
 export function NewOrderPage(): React.JSX.Element {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [receiverIsSender, setReceiverIsSender] = useState(false);
   const [shippingFeePayer, setShippingFeePayer] = useState<ShippingFeePayer>("sender");
   const [shippingPaymentMethod, setShippingPaymentMethod] = useState<ShippingPaymentMethod>("cash");
   const paymentAvailability = usePaymentAvailability();
@@ -288,6 +354,8 @@ export function NewOrderPage(): React.JSX.Element {
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const submitLockRef = useRef(false);
+  const idempotencyAttemptRef = useRef<StoredOrderAttempt | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -341,53 +409,75 @@ export function NewOrderPage(): React.JSX.Element {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setSubmitting(true);
     setFormError(null);
 
-    const quantity = numericValue(form.quantity);
-    const codAmount = numericValue(form.codAmount);
-    const declaredValue = numericValue(form.declaredValue);
-
-    if (senderSource === "addressBook" && !selectedSender) {
-      setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
-      return;
-    }
-    if (receiverSource === "addressBook" && !selectedReceiver) {
-      setFormError("Vui lòng chọn người nhận trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
-      return;
-    }
-    const senderManualError = senderSource === "manual" ? validateManualContact(manualSender, "người gửi") : null;
-    if (senderManualError) {
-      setFormError(senderManualError);
-      return;
-    }
-    const receiverManualError = receiverSource === "manual" ? validateManualContact(manualReceiver, "người nhận") : null;
-    if (receiverManualError) {
-      setFormError(receiverManualError);
-      return;
-    }
-    if (senderSource === "addressBook" && !senderAddress) {
-      setFormError("Vui lòng chọn một địa chỉ lấy hàng trong sổ địa chỉ.");
-      return;
-    }
-    if (receiverSource === "addressBook" && !receiverAddress) {
-      setFormError("Vui lòng chọn một địa chỉ giao hàng trong sổ địa chỉ.");
-      return;
-    }
-    if (!form.itemName.trim()) {
-      setFormError("Vui lòng nhập tên hàng hóa.");
-      return;
-    }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      setFormError("Số lượng phải là số nguyên lớn hơn 0.");
-      return;
-    }
-    if (weight < 0 || codAmount < 0 || declaredValue < 0) {
-      setFormError("Khối lượng, giá trị khai báo và COD không được âm.");
-      return;
-    }
-
-    setSubmitting(true);
+    let orderCreated = false;
     try {
+      const quantity = numericValue(form.quantity);
+      const codAmount = numericValue(form.codAmount);
+      const declaredValue = numericValue(form.declaredValue);
+      const hasMoreThanTwoDecimals = (value: number): boolean =>
+        Math.abs(value * 100 - Math.round(value * 100)) >= 0.000001;
+
+      if (senderSource === "addressBook" && !selectedSender) {
+        setFormError("Vui lòng chọn người gửi trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
+        return;
+      }
+      if (receiverSource === "addressBook" && !selectedReceiver) {
+        setFormError("Vui lòng chọn người nhận trong sổ địa chỉ hoặc chuyển sang nhập trực tiếp.");
+        return;
+      }
+      const senderManualError = senderSource === "manual" ? validateManualContact(manualSender, "người gửi") : null;
+      if (senderManualError) {
+        setFormError(senderManualError);
+        return;
+      }
+      const receiverManualError = receiverSource === "manual" ? validateManualContact(manualReceiver, "người nhận") : null;
+      if (receiverManualError) {
+        setFormError(receiverManualError);
+        return;
+      }
+      if (senderSource === "addressBook" && !senderAddress) {
+        setFormError("Vui lòng chọn một địa chỉ lấy hàng trong sổ địa chỉ.");
+        return;
+      }
+      if (receiverSource === "addressBook" && !receiverAddress) {
+        setFormError("Vui lòng chọn một địa chỉ giao hàng trong sổ địa chỉ.");
+        return;
+      }
+      if (!form.itemName.trim() || form.itemName.trim().length > 200) {
+        setFormError("Tên hàng hóa phải có từ 1 đến 200 ký tự.");
+        return;
+      }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) {
+        setFormError("Số lượng phải là số nguyên từ 1 đến 10.000.");
+        return;
+      }
+      if (
+        (form.weight.trim() && (weight <= 0 || weight > 10000 || hasMoreThanTwoDecimals(weight)))
+        || codAmount < 0
+        || codAmount > 999999999999.99
+        || hasMoreThanTwoDecimals(codAmount)
+        || declaredValue < 0
+        || declaredValue > 999999999999.99
+        || hasMoreThanTwoDecimals(declaredValue)
+      ) {
+        setFormError("Khối lượng, giá trị khai báo và COD phải nằm trong giới hạn cho phép, tối đa hai chữ số thập phân.");
+        return;
+      }
+      const dimensions = [form.length, form.width, form.height];
+      if (dimensions.some((value) => value.trim() && (numericValue(value) <= 0 || numericValue(value) > 1000 || hasMoreThanTwoDecimals(numericValue(value))))) {
+        setFormError("Mỗi chiều kích thước phải lớn hơn 0, không vượt quá 1.000 cm và có tối đa hai chữ số thập phân.");
+        return;
+      }
+      if (form.itemNote.trim().length > 1000 || form.note.trim().length > 1000) {
+        setFormError("Ghi chú không được vượt quá 1.000 ký tự.");
+        return;
+      }
+
       const manualContactCache = new Map<string, ContactWithDefaultAddress>();
       const sender = senderSource === "manual"
         ? await ensureManualContact({ input: manualSender, type: ContactType.SENDER, contacts, cache: manualContactCache })
@@ -417,35 +507,85 @@ export function NewOrderPage(): React.JSX.Element {
         return;
       }
 
+      const requestBody = JSON.stringify({
+        sender_id: sender.id,
+        receiver_id: receiver.id,
+        ...(receiverIsSender ? { receiver_is_sender: true } : {}),
+        pickup_address_id: pickupAddress.id,
+        delivery_address_id: deliveryAddress.id,
+        service_type: form.serviceType,
+        cod_amount: codAmount,
+        shipping_fee_payer: shippingFeePayer,
+        shipping_payment_method: shippingPaymentMethod,
+        note: form.note.trim() || undefined,
+        items: [{
+          item_name: form.itemName.trim(),
+          item_type: form.itemType.trim() || undefined,
+          quantity,
+          weight: form.weight.trim() ? weight : undefined,
+          length: numericValue(form.length) > 0 ? numericValue(form.length) : undefined,
+          width: numericValue(form.width) > 0 ? numericValue(form.width) : undefined,
+          height: numericValue(form.height) > 0 ? numericValue(form.height) : undefined,
+          declared_value: form.declaredValue.trim() ? declaredValue : undefined,
+          note: form.itemNote.trim() || undefined,
+        }],
+      });
+      const fingerprint = await fingerprintOrderRequest(requestBody);
+      const storedAttempt = idempotencyAttemptRef.current ?? readStoredOrderAttempt();
+      if (storedAttempt && storedAttempt.fingerprint !== fingerprint) {
+        setFormError("Kết quả yêu cầu tạo đơn trước chưa xác định. Hãy giữ nguyên nội dung và gửi lại yêu cầu đó để kiểm tra kết quả trước khi tạo đơn khác.");
+        return;
+      }
+
+      const idempotencyKey = storedAttempt?.key ?? window.crypto.randomUUID();
+      const attempt = { key: idempotencyKey, fingerprint };
+      idempotencyAttemptRef.current = attempt;
+      const persisted = persistOrderAttempt(attempt);
       const created = await apiFetch<{ id: string }>("/api/orders", {
         method: "POST",
-        body: JSON.stringify({
-          sender_id: sender.id,
-          receiver_id: receiver.id,
-          pickup_address_id: pickupAddress.id,
-          delivery_address_id: deliveryAddress.id,
-          service_type: form.serviceType,
-          cod_amount: codAmount,
-          shipping_fee_payer: shippingFeePayer,
-          shipping_payment_method: shippingPaymentMethod,
-          note: form.note.trim() || undefined,
-          items: [{
-            item_name: form.itemName.trim(),
-            item_type: form.itemType.trim() || undefined,
-            quantity,
-            weight: form.weight.trim() ? weight : undefined,
-            length: numericValue(form.length) > 0 ? numericValue(form.length) : undefined,
-            width: numericValue(form.width) > 0 ? numericValue(form.width) : undefined,
-            height: numericValue(form.height) > 0 ? numericValue(form.height) : undefined,
-            declared_value: form.declaredValue.trim() ? declaredValue : undefined,
-          }],
-        }),
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: requestBody,
+      }).catch((caught: unknown) => {
+        const isIdempotencyConflict = caught instanceof ApiError
+          && caught.status === 409
+          && caught.message.includes("Khóa tạo đơn này đã được dùng với dữ liệu khác");
+        if (
+          caught instanceof ApiError
+          && caught.status >= 400
+          && caught.status < 500
+          && !isIdempotencyConflict
+        ) {
+          idempotencyAttemptRef.current = null;
+          clearStoredOrderAttempt(idempotencyKey);
+        }
+        throw caught;
       });
+      orderCreated = true;
+      idempotencyAttemptRef.current = null;
+      clearStoredOrderAttempt(idempotencyKey);
+      if (!persisted) {
+        console.warn("Could not persist the order idempotency key; retry safety lasts only while this page remains open.");
+      }
       router.push(`/orders/${created.id}`);
     } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : "Không tạo được đơn hàng");
+      const message = caught instanceof Error ? caught.message : "Không tạo được đơn hàng";
+      const attempt = idempotencyAttemptRef.current;
+      const persisted = attempt ? readStoredOrderAttempt()?.key === attempt.key : true;
+      const isIdempotencyConflict = caught instanceof ApiError
+        && caught.status === 409
+        && caught.message.includes("Khóa tạo đơn này đã được dùng với dữ liệu khác");
+      setFormError(
+        isIdempotencyConflict
+          ? "Khóa tạo đơn bị xung đột với dữ liệu đã gửi trước đó. Hãy kiểm tra danh sách đơn hàng trước khi tiếp tục; không tạo yêu cầu mới bằng khóa khác cho đến khi xác định được kết quả."
+          : attempt && !persisted
+          ? `${message} Kết quả chưa xác định; khóa yêu cầu chỉ còn trong trang hiện tại vì trình duyệt không cho phép lưu sessionStorage/localStorage. Hãy thử lại cùng nội dung và không tải lại trang.`
+          : message,
+      );
     } finally {
-      setSubmitting(false);
+      if (!orderCreated) {
+        submitLockRef.current = false;
+        setSubmitting(false);
+      }
     }
   }
 
@@ -586,32 +726,45 @@ export function NewOrderPage(): React.JSX.Element {
               </div>
             </div>
 
+            <label className="mt-4 flex items-start gap-2 text-[12px] text-dt-muted">
+              <input
+                type="checkbox"
+                checked={receiverIsSender}
+                onChange={(event) => setReceiverIsSender(event.target.checked)}
+                className="mt-0.5 accent-dt-yellow"
+              />
+              <span>Người nhận là tôi. Đơn sẽ xuất hiện trong cả danh sách đơn tôi gửi và đơn tôi nhận.</span>
+            </label>
             <p className="text-[11px] text-dt-muted">Đơn hàng sẽ dùng đúng địa chỉ lấy và giao bạn đã chọn; việc chọn địa chỉ khác không làm thay đổi địa chỉ mặc định trong sổ.</p>
           </Card>
 
           <Card>
             <CardLabel>Hàng hóa</CardLabel>
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
-              <TextField label="Tên hàng hóa" required value={form.itemName} placeholder="Ví dụ: Hồ sơ hợp đồng" onChange={(event) => update("itemName", event.target.value)} />
-              <TextField label="Loại hàng" value={form.itemType} placeholder="Hồ sơ, quần áo..." onChange={(event) => update("itemType", event.target.value)} />
+              <TextField label="Tên hàng hóa" required value={form.itemName} maxLength={200} placeholder="Ví dụ: Hồ sơ hợp đồng" onChange={(event) => update("itemName", event.target.value)} />
+              <TextField label="Loại hàng" value={form.itemType} maxLength={100} placeholder="Hồ sơ, quần áo..." onChange={(event) => update("itemType", event.target.value)} />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <TextField label="Số lượng" type="number" min="1" step="1" required value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
-              <TextField label="Khối lượng (kg)" type="number" min="0" step="0.01" value={form.weight} placeholder="Không bắt buộc" onChange={(event) => update("weight", event.target.value)} />
-              <TextField label="Giá trị khai báo" type="number" min="0" step="1000" value={form.declaredValue} placeholder="Không bắt buộc" onChange={(event) => update("declaredValue", event.target.value)} />
+              <TextField label="Số lượng" type="number" min="1" max="10000" step="1" required value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
+              <TextField label="Khối lượng (kg)" type="number" min="0" max="10000" step="0.01" value={form.weight} placeholder="Không bắt buộc" onChange={(event) => update("weight", event.target.value)} />
+              <TextField label="Giá trị khai báo" type="number" min="0" max="999999999999.99" step="0.01" value={form.declaredValue} placeholder="Không bắt buộc" onChange={(event) => update("declaredValue", event.target.value)} />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              <TextField label="Chiều dài (cm)" type="number" min="0" step="0.1" value={form.length} placeholder="Không bắt buộc" onChange={(event) => update("length", event.target.value)} />
-              <TextField label="Chiều rộng (cm)" type="number" min="0" step="0.1" value={form.width} placeholder="Không bắt buộc" onChange={(event) => update("width", event.target.value)} />
-              <TextField label="Chiều cao (cm)" type="number" min="0" step="0.1" value={form.height} placeholder="Không bắt buộc" hint="Nhập đủ 3 chiều: kiện cồng kềnh được tính cước theo khối lượng quy đổi (dài×rộng×cao/6000)." onChange={(event) => update("height", event.target.value)} />
+              <TextField label="Chiều dài (cm)" type="number" min="0" max="1000" step="0.1" value={form.length} placeholder="Không bắt buộc" onChange={(event) => update("length", event.target.value)} />
+              <TextField label="Chiều rộng (cm)" type="number" min="0" max="1000" step="0.1" value={form.width} placeholder="Không bắt buộc" onChange={(event) => update("width", event.target.value)} />
+              <TextField label="Chiều cao (cm)" type="number" min="0" max="1000" step="0.1" value={form.height} placeholder="Không bắt buộc" hint="Nhập đủ 3 chiều: kiện cồng kềnh được tính cước theo khối lượng quy đổi (dài×rộng×cao/6000)." onChange={(event) => update("height", event.target.value)} />
             </div>
+            <label className="mt-4 flex flex-col gap-[6px]">
+              <span className="text-[11px] font-medium text-dt-muted">Ghi chú mặt hàng</span>
+              <textarea value={form.itemNote} maxLength={1000} onChange={(event) => update("itemNote", event.target.value)} placeholder="Lưu ý riêng cho mặt hàng này..." rows={2} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
+            </label>
           </Card>
 
           <Card>
             <CardLabel>Ghi chú</CardLabel>
             <label className="flex flex-col gap-[6px]">
               <span className="text-[11px] font-medium text-dt-muted">Lưu ý cho đơn hàng</span>
-              <textarea value={form.note} onChange={(event) => update("note", event.target.value)} placeholder="Ví dụ: Gọi trước khi giao..." rows={4} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
+              <textarea value={form.note} maxLength={1000} onChange={(event) => update("note", event.target.value)} placeholder="Ví dụ: Gọi trước khi giao..." rows={4} className="w-full resize-y rounded-dt border border-dt-border bg-dt-panel2 px-3 py-3 text-[13px] text-dt-text placeholder:text-dt-muted focus:border-dt-yellow focus:outline-none" />
             </label>
           </Card>
         </div>
@@ -622,7 +775,7 @@ export function NewOrderPage(): React.JSX.Element {
             <SelectField label="Loại dịch vụ" required value={form.serviceType} onChange={(event) => update("serviceType", event.target.value)}>
               {SERVICE_OPTIONS.map((option) => <option key={option.value} value={option.value} className="bg-dt-panel2">{option.label}</option>)}
             </SelectField>
-            <TextField label="COD cần thu hộ" type="number" min="0" step="1000" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
+            <TextField label="COD cần thu hộ" type="number" min="0" max="999999999999.99" step="0.01" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
             <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} feeNote={quote && !quote.available ? quote.message : null} availability={paymentAvailability} />
           </Card>
 

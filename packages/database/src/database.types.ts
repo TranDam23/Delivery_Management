@@ -633,12 +633,16 @@ export type Database = {
           event_time: string
           from_status_id: string | null
           id: string
+          idempotency_key: string | null
           image_url: string | null
+          idempotency_result: Json | null
+          leg_attempt_no: number | null
           location_lat: number | null
           location_lng: number | null
           note: string | null
           order_id: string
           performed_by: string
+          request_hash: string | null
           status_id: string
         }
         Insert: {
@@ -646,12 +650,16 @@ export type Database = {
           event_time?: string
           from_status_id?: string | null
           id?: string
+          idempotency_key?: string | null
           image_url?: string | null
+          idempotency_result?: Json | null
+          leg_attempt_no?: number | null
           location_lat?: number | null
           location_lng?: number | null
           note?: string | null
           order_id: string
           performed_by: string
+          request_hash?: string | null
           status_id: string
         }
         Update: {
@@ -659,12 +667,16 @@ export type Database = {
           event_time?: string
           from_status_id?: string | null
           id?: string
+          idempotency_key?: string | null
           image_url?: string | null
+          idempotency_result?: Json | null
+          leg_attempt_no?: number | null
           location_lat?: number | null
           location_lng?: number | null
           note?: string | null
           order_id?: string
           performed_by?: string
+          request_hash?: string | null
           status_id?: string
         }
         Relationships: [
@@ -932,6 +944,8 @@ export type Database = {
           cod_amount: number
           created_at: string
           created_by: string
+          creation_idempotency_key: string | null
+          creation_request_hash: string | null
           delivery_address_id: string
           delivery_warehouse_id: string | null
           expected_delivery_date: string | null
@@ -939,9 +953,12 @@ export type Database = {
           note: string | null
           pickup_address_id: string
           pickup_warehouse_id: string | null
+          public_tracking_token: string
           qr_code: string
           receiver_id: string
+          receiver_user_id: string | null
           sender_id: string
+          sender_user_id: string | null
           service_type: string
           shipping_fee_payer: string | null
           shipping_handover_id: string | null
@@ -966,6 +983,8 @@ export type Database = {
           cod_amount?: number
           created_at?: string
           created_by: string
+          creation_idempotency_key?: string | null
+          creation_request_hash?: string | null
           delivery_address_id: string
           delivery_warehouse_id?: string | null
           expected_delivery_date?: string | null
@@ -973,9 +992,12 @@ export type Database = {
           note?: string | null
           pickup_address_id: string
           pickup_warehouse_id?: string | null
+          public_tracking_token?: string
           qr_code: string
           receiver_id: string
+          receiver_user_id?: string | null
           sender_id: string
+          sender_user_id?: string | null
           service_type?: string
           shipping_fee_payer?: string | null
           shipping_handover_id?: string | null
@@ -1000,6 +1022,8 @@ export type Database = {
           cod_amount?: number
           created_at?: string
           created_by?: string
+          creation_idempotency_key?: string | null
+          creation_request_hash?: string | null
           delivery_address_id?: string
           delivery_warehouse_id?: string | null
           expected_delivery_date?: string | null
@@ -1007,9 +1031,12 @@ export type Database = {
           note?: string | null
           pickup_address_id?: string
           pickup_warehouse_id?: string | null
+          public_tracking_token?: string
           qr_code?: string
           receiver_id?: string
+          receiver_user_id?: string | null
           sender_id?: string
+          sender_user_id?: string | null
           service_type?: string
           shipping_fee_payer?: string | null
           shipping_handover_id?: string | null
@@ -1641,6 +1668,82 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      record_delivery_event_atomic: {
+        Args: {
+          p_actor_id: string
+          p_actor_role_code: string
+          p_cod_collected: boolean
+          p_delivery_id: string
+          p_expected_attempt_no: number
+          p_idempotency_key: string
+          p_image_url: string | null
+          p_location_lat: number | null
+          p_location_lng: number | null
+          p_note: string | null
+          p_request_hash: string
+          p_status_code: string
+        }
+        Returns: Json
+      }
+      search_orders_page: {
+        Args: {
+          p_page: number
+          p_page_size: number
+          p_search: string | null
+          p_status_code: string | null
+          p_visible_order_ids: string[] | null
+        }
+        Returns: {
+          order_id: string | null
+          total_count: number
+        }[]
+      }
+      search_orders_page_filtered: {
+        Args: {
+          p_created_before: string | null
+          p_created_from: string | null
+          p_page: number
+          p_page_size: number
+          p_search: string | null
+          p_status_code: string | null
+          p_visible_order_ids: string[] | null
+        }
+        Returns: {
+          order_id: string | null
+          total_count: number
+        }[]
+      }
+      confirm_receiver_delivery_atomic: {
+        Args: {
+          p_confirmed_at: string
+          p_delivery_id: string
+          p_enqueue_blockchain: boolean
+          p_event_data_hash: string | null
+          p_event_payload: Json | null
+          p_event_type: string | null
+          p_note: string | null
+          p_order_id: string
+          p_user_role: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      create_order_with_items: {
+        Args: {
+          p_idempotency_key: string
+          p_items: Json
+          p_order: Json
+          p_request_hash: string
+        }
+        Returns: {
+          delivery_warehouse_id: string
+          id: string
+          pickup_warehouse_id: string
+          qr_code: string
+          tracking_code: string
+          was_created: boolean
+        }[]
+      }
       assign_delivery_atomic: {
         Args: {
           p_assigned_by: string

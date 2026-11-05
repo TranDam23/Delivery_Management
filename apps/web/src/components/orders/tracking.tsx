@@ -74,7 +74,47 @@ export function TrackingDetailPage({ trackingCode, publicMode = false }: { track
       <section className="flex items-center justify-between gap-3 rounded-dt border border-dt-yellow/30 bg-dt-yellow/5 p-5"><div><p className="text-[10px] uppercase tracking-wide text-dt-muted">Trạng thái hiện tại</p><p className="mt-1 text-lg font-semibold">{statusLabel(result.order.order_statuses)}</p><p className="mt-1 text-[11px] text-dt-muted">Dịch vụ: {result.order.service_type}</p></div><Truck className="text-dt-yellow" size={25} /></section>
       <TrackingTimeline entries={result.timeline} />
       <Card><CardLabel>Ngày giao dự kiến</CardLabel><p className="mt-2 text-[13px] font-medium">{result.order.expected_delivery_date ? formatDateTime(result.order.expected_delivery_date) : "Chưa có dự kiến"}</p>{result.order.estimate_source === "service" && result.order.expected_delivery_date ? <p className="mt-1 text-[11px] text-dt-muted">Ước tính tham khảo theo gói dịch vụ, chưa tính tuyến thực tế.</p> : null}</Card>
-      <Card><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 text-dt-green" size={18} /><div><CardLabel>Đối chiếu Blockchain</CardLabel><p className="mt-1 text-[11px] leading-5 text-dt-muted">Các sự kiện đã được hệ thống liên kết với blockchain sẽ xuất hiện ở đây.</p></div></div>{result.blockchainEvents.length === 0 ? <p className="mt-4 rounded-md bg-dt-panel2 p-3 text-[11px] text-dt-muted">Chưa có giao dịch blockchain được ghi cho mã này.</p> : <div className="mt-4 space-y-2">{result.blockchainEvents.map((event, index) => <div key={`${event.created_at}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dt-border bg-dt-panel2 p-3 text-[10px]"><span className="text-dt-text">{event.event_type}</span><span className="text-dt-muted">{event.transaction_hash ?? "Đang chờ xác nhận"}</span></div>)}</div>}{currentStatus ? <p className="mt-3 text-[10px] text-dt-muted">Mã trạng thái: {currentStatus.code}</p> : null}</Card>
+      <Card>
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 text-dt-green" size={18} />
+          <div>
+            <CardLabel>Đối chiếu Blockchain</CardLabel>
+            <p className="mt-1 text-[11px] leading-5 text-dt-muted">
+              Các sự kiện đã được hệ thống liên kết với blockchain sẽ xuất hiện ở đây.
+            </p>
+          </div>
+        </div>
+        {result.blockchainEvents.length === 0 ? (
+          <p className="mt-4 rounded-md bg-dt-panel2 p-3 text-[11px] text-dt-muted">
+            Chưa có giao dịch blockchain được ghi cho mã này.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {result.blockchainEvents.map((event, index) => {
+              const statusText = event.tx_status === "confirmed"
+                ? "Đã xác nhận"
+                : event.tx_status === "failed"
+                  ? "Gửi giao dịch thất bại"
+                  : event.tx_status === "pending"
+                    ? "Đang chờ xử lý"
+                    : `Trạng thái: ${event.tx_status}`;
+              return (
+                <div key={`${event.created_at}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dt-border bg-dt-panel2 p-3 text-[10px]">
+                  <div>
+                    <p className="text-dt-text">{event.event_type}</p>
+                    <p className="mt-1 text-dt-muted">{statusText}</p>
+                  </div>
+                  <span className="break-all text-dt-muted">
+                    {event.transaction_hash ?? "Chưa có transaction hash"}
+                    {event.block_number !== null ? ` · Khối ${event.block_number}` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {currentStatus ? <p className="mt-3 text-[10px] text-dt-muted">Mã trạng thái: {currentStatus.code}</p> : null}
+      </Card>
       {currentStatus?.code === OrderStatusCode.DELIVERED ? <RecipientFeedback trackingCode={result.order.tracking_code} /> : null}
     </>
   );

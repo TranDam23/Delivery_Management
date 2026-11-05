@@ -17,6 +17,20 @@ export interface RecordDeliveryEventResult {
   chainTimestamp: string | null;
 }
 
+export class BlockchainTransactionOutcomeUnknownError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "BlockchainTransactionOutcomeUnknownError";
+  }
+}
+
+export class BlockchainTransactionRevertedError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "BlockchainTransactionRevertedError";
+  }
+}
+
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 function canonicalize(value: unknown): JsonValue {
@@ -60,14 +74,49 @@ export async function recordDeliveryEventOnChain(
 ): Promise<RecordDeliveryEventResult> {
   const contract = getBlockchainOperatorContract();
 
-  const tx = await contract.recordEvent(
-    params.trackingCode,
-    params.eventType,
-    params.performedByAddress,
-    params.eventDataHash,
-  );
-  const receipt = await tx.wait();
-  if (!receipt) throw new Error("Transaction was dropped/replaced before confirmation");
+  let tx: Awaited<ReturnType<typeof contract.recordEvent>>;
+  try {
+    tx = await contract.recordEvent(
+      params.trackingCode,
+      params.eventType,
+      params.performedByAddress,
+      params.eventDataHash,
+    );
+  } catch (error) {
+    throw new BlockchainTransactionOutcomeUnknownError(
+      "Blockchain transaction submission outcome is unknown",
+      { cause: error },
+    );
+  }
+
+  let receipt: Awaited<ReturnType<typeof tx.wait>>;
+  try {
+    receipt = await tx.wait();
+  } catch (error) {
+    const failedReceipt = typeof error === "object" && error !== null && "receipt" in error
+      ? error.receipt
+      : null;
+    if (
+      typeof failedReceipt === "object"
+      && failedReceipt !== null
+      && "status" in failedReceipt
+      && failedReceipt.status === 0
+    ) {
+      throw new BlockchainTransactionRevertedError("Blockchain transaction reverted", { cause: error });
+    }
+    throw new BlockchainTransactionOutcomeUnknownError(
+      "Blockchain transaction was submitted but its final outcome is unknown",
+      { cause: error },
+    );
+  }
+  if (!receipt) {
+    throw new BlockchainTransactionOutcomeUnknownError(
+      "Blockchain transaction was submitted but no receipt was returned",
+    );
+  }
+  if (receipt.status === 0) {
+    throw new BlockchainTransactionRevertedError("Blockchain transaction reverted");
+  }
   const block = await receipt.getBlock().catch(() => null);
 
   return {

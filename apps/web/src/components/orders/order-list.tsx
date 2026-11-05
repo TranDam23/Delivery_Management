@@ -2,12 +2,12 @@
 
 import { ArrowUpRight, Package, PackageCheck, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { OrderStatusCode, type Paginated } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { SelectField } from "@/components/ui/field";
+import { SelectField, TextField } from "@/components/ui/field";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import {
   addressText,
@@ -20,6 +20,7 @@ import {
 } from "@/lib/order-ui";
 
 export type OrderDirection = "sent" | "received";
+const PAGE_SIZE = 20;
 
 const STATUS_OPTIONS = [
   { value: OrderStatusCode.CREATED, label: "Đã tạo đơn" },
@@ -85,38 +86,60 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
   const [orders, setOrders] = useState<OrderListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [pageNumber, setPageNumber] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
+  const requestIdRef = useRef(0);
 
   const loadOrders = useCallback(async (): Promise<void> => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     setNeedLogin(false);
 
-    const query = new URLSearchParams({ direction, pageSize: "100" });
+    const query = new URLSearchParams({
+      direction,
+      page: String(pageNumber),
+      pageSize: String(PAGE_SIZE),
+    });
     if (statusFilter) query.set("status", statusFilter);
+    if (search.trim()) query.set("q", search.trim());
+    if (fromDate) query.set("from", fromDate);
+    if (toDate) query.set("to", toDate);
 
     try {
       const page = await apiFetch<Paginated<OrderListItem>>(`/api/orders?${query.toString()}`);
+      if (requestId !== requestIdRef.current) return;
       setOrders(page.items);
       setTotal(page.total);
+      const lastPage = Math.max(1, Math.ceil(page.total / PAGE_SIZE));
+      if (pageNumber > lastPage) {
+        setPageNumber(lastPage);
+        return;
+      }
     } catch (caught) {
+      if (requestId !== requestIdRef.current) return;
       if (caught instanceof ApiError && caught.status === 401) {
         setNeedLogin(true);
       } else {
         setError(caught instanceof Error ? caught.message : "Không tải được danh sách đơn hàng");
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [direction, statusFilter]);
+  }, [direction, fromDate, pageNumber, search, statusFilter, toDate]);
 
   useEffect(() => {
-    void loadOrders();
+    const timer = setTimeout(() => void loadOrders(), 250);
+    return () => clearTimeout(timer);
   }, [loadOrders]);
 
   const isSent = direction === "sent";
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
@@ -142,11 +165,25 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
           {isSent ? <Package size={15} className="text-dt-yellow" /> : <PackageCheck size={15} className="text-sky-300" />}
           <span>{total} đơn hàng</span>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <TextField
+            label="Tìm mã, tên hoặc số điện thoại"
+            value={search}
+            maxLength={100}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPageNumber(1);
+            }}
+            placeholder="Mã vận đơn hoặc liên hệ"
+            wrapperClassName="w-full sm:w-[280px]"
+          />
           <SelectField
             label="Lọc trạng thái"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(event) => {
+              setStatusFilter(event.target.value);
+              setPageNumber(1);
+            }}
             wrapperClassName="w-full sm:w-[220px]"
           >
             <option value="" className="bg-dt-panel2">Tất cả trạng thái</option>
@@ -156,6 +193,8 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
               </option>
             ))}
           </SelectField>
+          <TextField label="Từ ngày tạo" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => { setFromDate(event.target.value); setPageNumber(1); }} />
+          <TextField label="Đến ngày tạo" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => { setToDate(event.target.value); setPageNumber(1); }} />
           <Button variant="secondary" onClick={() => void loadOrders()} disabled={loading} aria-label="Tải lại">
             <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
           </Button>
@@ -184,22 +223,26 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
       {!loading && !needLogin && !error && orders.length === 0 ? (
         <Card>
           <p className="text-[13px]">
-            {isSent ? "Chưa có đơn hàng do bạn đứng tên người gửi." : "Chưa có đơn hàng được gửi đến số điện thoại của bạn."}
+            {search || statusFilter || fromDate || toDate
+              ? "Không có đơn hàng phù hợp với tiêu chí tìm kiếm."
+              : isSent
+                ? "Chưa có đơn hàng do bạn đứng tên người gửi."
+                : "Chưa có đơn hàng được gửi đến số điện thoại của bạn."}
           </p>
-          <p className="text-[12px] text-dt-muted">
+          {!search && !statusFilter && !fromDate && !toDate ? <p className="text-[12px] text-dt-muted">
             {isSent
               ? "Bạn có thể tạo đơn mới từ sổ địa chỉ của mình."
               : "Đơn nhận sẽ xuất hiện khi người gửi tạo đơn với số điện thoại này."}
-          </p>
-          {isSent ? (
+          </p> : null}
+          {isSent && !search && !statusFilter && !fromDate && !toDate ? (
             <Link href="/orders/new" className={`${buttonClassName()} mt-2 w-fit`}>
               Tạo đơn đầu tiên
             </Link>
-          ) : (
+          ) : !isSent && !search && !statusFilter && !fromDate && !toDate ? (
             <Link href="/orders/track" className={`${buttonClassName("secondary")} mt-2 w-fit`}>
               Tra cứu vận đơn
             </Link>
-          )}
+          ) : null}
         </Card>
       ) : null}
 
@@ -220,6 +263,27 @@ export function OrderListPage({ direction }: OrderListPageProps): React.JSX.Elem
               {orders.map((order) => <OrderListRow key={order.id} order={order} direction={direction} />)}
             </tbody>
           </table>
+        </div>
+      ) : null}
+      {total > 0 ? (
+        <div className="flex items-center justify-between gap-3 text-[11px] text-dt-muted">
+          <span>Trang {Math.min(pageNumber, totalPages)} / {totalPages} · {total} đơn hàng</span>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setPageNumber((current) => Math.max(1, current - 1))}
+              disabled={loading || pageNumber <= 1}
+            >
+              Trước
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setPageNumber((current) => Math.min(totalPages, current + 1))}
+              disabled={loading || pageNumber >= totalPages}
+            >
+              Sau
+            </Button>
+          </div>
         </div>
       ) : null}
     </>

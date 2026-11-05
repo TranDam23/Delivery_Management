@@ -1,11 +1,10 @@
 import type { NextRequest } from "next/server";
-import { normalizePhone, RoleCode } from "@delivery/shared";
+import { z } from "zod";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { generateOrderQrCode } from "@/lib/qr";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
-import { getUserOperationalScope } from "@/lib/dispatcher-scope";
-import { normalizeArea } from "@/lib/shipment-routing";
+import { checkOrderViewAccess } from "@/lib/order-access";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -16,61 +15,58 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const auth = getAuthFromRequest(request);
   if (!auth) return fail("Unauthorized", 401);
 
-  const { id } = await params;
+  const parsedOrderId = z.string().uuid().safeParse((await params).id);
+  if (!parsedOrderId.success) return fail("Mã đơn hàng không hợp lệ.", 400);
+  const orderId = parsedOrderId.data.toLowerCase();
   const supabase = getSupabaseServiceClient();
+
+  const access = await checkOrderViewAccess(supabase, auth, orderId);
+  if (!access.allowed) {
+    if (access.status >= 500) {
+      console.error("Checking order QR access failed", { orderId, error: access.error });
+      return fail("Không thể kiểm tra quyền truy cập mã QR.", 500);
+    }
+    return fail(access.error, access.status);
+  }
 
   const { data: order, error } = await supabase
     .from("orders")
-    .select(
-      "tracking_code, created_by, pickup_warehouse_id, delivery_warehouse_id, pickup_address:addresses!orders_pickup_address_id_fkey(province), delivery_address:addresses!orders_delivery_address_id_fkey(province), sender:contacts!orders_sender_id_fkey(user_id, phone), receiver:contacts!orders_receiver_id_fkey(user_id, phone)",
-    )
-    .eq("id", id)
+    .select("tracking_code, public_tracking_token")
+    .eq("id", orderId)
     .maybeSingle();
 
-  if (error) return fail(error.message, 500);
+  if (error) {
+    console.error("Loading order tracking code for QR failed", { orderId, error });
+    return fail("Không thể tải mã vận đơn để tạo QR.", 500);
+  }
   if (!order) return fail("Order not found", 404);
 
-  const { data: guestOrder, error: guestError } = await supabase.from("guest_orders")
-    .select("order_id").eq("order_id", id).maybeSingle();
-  if (guestError) return fail(guestError.message, 500);
+  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!configuredAppUrl) return fail("Chưa cấu hình địa chỉ ứng dụng để tạo QR tracking.", 503);
 
-  const canViewAll = auth.roleCode === RoleCode.ADMIN;
-  const sender = Array.isArray(order.sender) ? order.sender[0] : order.sender;
-  const receiver = Array.isArray(order.receiver) ? order.receiver[0] : order.receiver;
-  const { data: viewer, error: viewerError } = await supabase
-    .from("users")
-    .select("phone, warehouse_id")
-    .eq("id", auth.userId)
-    .maybeSingle();
-  if (viewerError) return fail(viewerError.message, 500);
-  if (!viewer) return fail("Unauthorized", 401);
-
-  const viewerPhone = typeof viewer.phone === "string" ? normalizePhone(viewer.phone) : "";
-  let canViewByWarehouse = false;
-  if (auth.roleCode === RoleCode.DISPATCHER || auth.roleCode === RoleCode.WAREHOUSE_STAFF) {
-    const warehouseScope = await getUserOperationalScope(auth);
-    if (warehouseScope.error) return fail(warehouseScope.error, 500);
-    canViewByWarehouse = Boolean(
-      warehouseScope.warehouseId
-      && (auth.roleCode === RoleCode.DISPATCHER && warehouseScope.warehouseLevel === "PROVINCE"
-        ? normalizeArea(order.pickup_address?.province) === normalizeArea(warehouseScope.province)
-          || normalizeArea(order.delivery_address?.province) === normalizeArea(warehouseScope.province)
-        : order.pickup_warehouse_id === warehouseScope.warehouseId
-          || order.delivery_warehouse_id === warehouseScope.warehouseId),
-    );
+  let appOrigin: string;
+  try {
+    const appUrl = new URL(configuredAppUrl);
+    if (
+      !["http:", "https:"].includes(appUrl.protocol)
+      || appUrl.username
+      || appUrl.password
+      || (process.env.NODE_ENV === "production" && appUrl.protocol !== "https:")
+    ) {
+      return fail("Địa chỉ ứng dụng dùng để tạo QR tracking không hợp lệ.", 503);
+    }
+    appOrigin = appUrl.origin;
+  } catch {
+    return fail("Địa chỉ ứng dụng dùng để tạo QR tracking không hợp lệ.", 503);
   }
 
-  const canView =
-    canViewAll ||
-    canViewByWarehouse ||
-    order.created_by === auth.userId ||
-    sender?.user_id === auth.userId ||
-    receiver?.user_id === auth.userId ||
-    (!guestOrder && viewerPhone.length > 0 &&
-      (normalizePhone(sender?.phone ?? "") === viewerPhone ||
-        normalizePhone(receiver?.phone ?? "") === viewerPhone));
-  if (!canView) return fail("Forbidden", 403);
-
-  const qrDataUrl = await generateOrderQrCode(order.tracking_code);
+  const trackingUrl = new URL(`/tra-cuu/${encodeURIComponent(order.public_tracking_token)}`, appOrigin).toString();
+  let qrDataUrl: string;
+  try {
+    qrDataUrl = await generateOrderQrCode(trackingUrl);
+  } catch (qrError) {
+    console.error("Generating order QR failed", { orderId, qrError });
+    return fail("Không thể tạo mã QR cho đơn hàng.", 500);
+  }
   return ok({ trackingCode: order.tracking_code, qrDataUrl });
 }

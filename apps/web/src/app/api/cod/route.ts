@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   const statusFilter = request.nextUrl.searchParams.get("status") ?? "all";
   if (!["all", "pending", "collected", "reconciled"].includes(statusFilter)) return fail("Trạng thái COD không hợp lệ", 400);
   const scope = await scopedOrderIds(auth);
-  if (scope.error) return fail(scope.error, scope.error === "Forbidden" ? 403 : 500);
+  if (scope.error) return fail(scope.error, scope.status ?? (scope.error === "Forbidden" ? 403 : 500));
   if (scope.ids !== null && !scope.ids.length) return ok({ items: [], total: 0, page, pageSize });
   const db = getSupabaseServiceClient();
   if (statusFilter !== "all") {

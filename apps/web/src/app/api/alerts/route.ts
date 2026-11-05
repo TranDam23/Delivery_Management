@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status") ?? "open";
   const type = request.nextUrl.searchParams.get("type");
   const scope = await scopedOrderIds(auth);
-  if (scope.error) return fail(scope.error, 500);
+  if (scope.error) return fail(scope.error, scope.status ?? 500);
   if (scope.ids !== null && scope.ids.length === 0) return ok({ items: [], total: 0, page, pageSize });
 
   let query = getSupabaseServiceClient().from("alerts")
