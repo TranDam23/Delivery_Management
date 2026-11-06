@@ -28,7 +28,8 @@ function seesAllContacts(roleCode: RoleCode): boolean {
 function canManageContacts(roleCode: RoleCode): boolean {
   return (
     roleCode === RoleCode.ADMIN ||
-    roleCode === RoleCode.CUSTOMER
+    roleCode === RoleCode.CUSTOMER ||
+    roleCode === RoleCode.DISPATCHER
   );
 }
 

@@ -23,7 +23,7 @@ function seesAllContacts(roleCode: RoleCode): boolean {
 }
 
 function canManageContacts(roleCode: RoleCode): boolean {
-  return seesAllContacts(roleCode) || roleCode === RoleCode.CUSTOMER;
+  return seesAllContacts(roleCode) || roleCode === RoleCode.CUSTOMER || roleCode === RoleCode.DISPATCHER;
 }
 
 async function getAccessibleContact(contactId: string, userId: string, roleCode: RoleCode) {
