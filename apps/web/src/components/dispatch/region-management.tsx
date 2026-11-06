@@ -221,6 +221,8 @@ export function RegionManagementPage(): React.JSX.Element {
       ? Promise.resolve(true)
       : mutate(() => apiFetch(`/api/regions/${area.id}`, { method: "PATCH", body: JSON.stringify({ name }) }), "Đã đổi tên khu vực.");
   const toggle = (area: Area): void => {
+    if (area.status === "active" && area.warehouse_count > 0
+      && !window.confirm(`"${area.name}" đang có ${area.warehouse_count} kho. Tạm dừng khu vực sẽ không còn cho chọn khu vực này khi nhập địa chỉ và không nhận đơn mới lấy/giao tại đây. Tiếp tục?`)) return;
     void mutate(
       () => apiFetch(`/api/regions/${area.id}`, { method: "PATCH", body: JSON.stringify({ status: area.status === "active" ? "inactive" : "active" }) }),
       area.status === "active" ? "Đã tạm dừng khu vực." : "Đã kích hoạt khu vực.",
@@ -242,7 +244,7 @@ export function RegionManagementPage(): React.JSX.Element {
         {error ? <p role="alert" className="rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}
         {notice ? <p role="status" className="rounded-dt border border-dt-green/30 bg-dt-green/10 px-4 py-3 text-[12px] text-dt-green">{notice}</p> : null}
         <p className="text-[11px] text-dt-muted">
-          Khu vực đang có kho hoặc địa chỉ sử dụng không thể xóa hay đổi tên; hãy chuyển sang &quot;Tạm dừng&quot;. {canManageProvinces ? "" : "Bạn chỉ quản lý quận/huyện và phường/xã trong tỉnh phụ trách."}
+          Khu vực đang có kho hoặc địa chỉ sử dụng không thể xóa hay đổi tên; hãy chuyển sang &quot;Tạm dừng&quot;. Khu vực tạm dừng không còn xuất hiện khi chọn địa chỉ và không nhận đơn mới; kho mới chỉ đặt được ở khu vực đã có trong danh mục. {canManageProvinces ? "" : "Bạn chỉ quản lý quận/huyện và phường/xã trong tỉnh phụ trách."}
         </p>
 
         {loading ? <p className="text-[12px] text-dt-muted">Đang tải...</p> : (

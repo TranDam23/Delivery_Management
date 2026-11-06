@@ -12,6 +12,7 @@ import { verifyGuestEmailOtp } from "@/lib/guest-email-otp";
 import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
 import { normalizeArea, selectNearestWarehouse } from "@/lib/shipment-routing";
+import { suspendedAreaError } from "@/lib/area-catalog";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { fetchActiveCommuneWarehouses } from "@/lib/warehouse-queries";
 
@@ -53,6 +54,12 @@ export async function POST(request: NextRequest) {
   const pickup = selectNearestWarehouse(input.sender, warehouses);
   const delivery = selectNearestWarehouse(input.receiver, warehouses);
   if (!pickup || !delivery) return fail("Chưa có kho hoạt động phục vụ địa chỉ gửi hoặc nhận.");
+
+  const suspendedError = await suspendedAreaError([
+    { title: "Địa chỉ gửi", province: input.sender.province, district: input.sender.district, ward: input.sender.ward },
+    { title: "Địa chỉ nhận", province: input.receiver.province, district: input.receiver.district, ward: input.receiver.ward },
+  ]);
+  if (suspendedError) return fail(suspendedError);
 
   let zone;
   try { zone = await zoneForProvinces(input.sender.province, input.receiver.province); }

@@ -4,6 +4,7 @@ import { RoleCode } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { writeAuditLog } from "@/lib/audit";
+import { invalidateAreaCatalogCache } from "@/lib/area-catalog";
 import { normalizeArea } from "@/lib/shipment-routing";
 import {
   areaDb,
@@ -137,6 +138,7 @@ export async function POST(request: NextRequest) {
     return fail(error.message, 500);
   }
 
+  invalidateAreaCatalogCache();
   await writeAuditLog({
     userId: auth.userId,
     action: "AREA_CREATE",

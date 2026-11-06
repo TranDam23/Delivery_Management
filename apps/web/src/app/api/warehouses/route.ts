@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { geoPointFields, refineCoordinatePair, RoleCode, WarehouseLevelCode, WarehouseStatusCode } from "@delivery/shared";
+import { warehouseAreaError } from "@/lib/area-catalog";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatcher-scope";
@@ -118,6 +119,12 @@ export async function POST(request: NextRequest) {
 
   const parsed = warehouseSchema.safeParse(await request.json());
   if (!parsed.success) return fail(parsed.error.message);
+  // Kho mới phải nằm ở khu vực đã có trong danh mục khu vực và đang hoạt động.
+  const areaError = await warehouseAreaError(
+    { province: parsed.data.province, ward: parsed.data.ward },
+    parsed.data.warehouse_level === WarehouseLevelCode.COMMUNE,
+  );
+  if (areaError) return fail(areaError, 400);
 
   let parentWarehouseId: string | null = null;
   let regionCode: string | null = parsed.data.region_code?.trim() || null;

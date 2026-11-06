@@ -4,6 +4,7 @@ import { RoleCode } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { writeAuditLog } from "@/lib/audit";
+import { invalidateAreaCatalogCache } from "@/lib/area-catalog";
 import { normalizeArea } from "@/lib/shipment-routing";
 import {
   areaDb,
@@ -80,6 +81,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return fail(error.message, 500);
   }
 
+  invalidateAreaCatalogCache();
   await writeAuditLog({
     userId: loaded.userId,
     action: "AREA_UPDATE",
@@ -115,6 +117,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { error } = await areaDb().from("administrative_areas").delete().eq("id", id);
   if (error) return fail(error.code === "23503" ? "Không thể xóa: còn khu vực con" : error.message, error.code === "23503" ? 409 : 500);
 
+  invalidateAreaCatalogCache();
   await writeAuditLog({
     userId: loaded.userId,
     action: "AREA_DELETE",

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { VIETNAM_PROVINCES } from "@delivery/shared";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
+import { isSuspended, loadAreaCatalog, loadAreaRows } from "@/lib/area-catalog";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 
 interface LocationRow {
@@ -28,9 +29,9 @@ function sortVietnamese(values: Iterable<string>): string[] {
 /**
  * GET /api/locations — danh mục tỉnh/quận/xã dùng chung cho các form địa chỉ.
  *
- * Danh mục khu vực được tổng hợp từ dữ liệu kho và địa chỉ đã có trong
- * database. Vì vậy giá trị người dùng chọn luôn có thể đối chiếu với mạng kho
- * và không tạo ra tên khu vực tự do làm sai phân kho.
+ * Danh mục gồm khu vực do Admin/Điều phối quản lý (bảng administrative_areas) hợp với
+ * dữ liệu kho và địa chỉ đã có. Khu vực bị tạm dừng trong mục Khu vực sẽ không còn
+ * được đưa ra để chọn, nên không tạo ra tên khu vực tự do làm sai phân kho.
  */
 export async function GET(request: NextRequest) {
   const auth = getAuthFromRequest(request);
@@ -102,20 +103,55 @@ export async function GET(request: NextRequest) {
   for (const row of warehouseRows) addLocation(row);
   for (const row of addressRows) addLocation(row);
 
+  // Khu vực do Admin/Điều phối quản lý: thêm các khu vực đang hoạt động và loại các khu vực tạm dừng.
+  const areaRows = await loadAreaRows();
+  const areaCatalog = areaRows.length > 0 ? await loadAreaCatalog() : null;
+  if (areaCatalog) {
+    const byId = new Map(areaRows.map((area) => [area.id, area]));
+    for (const area of areaRows) {
+      if (area.status !== "active") continue;
+      if (area.level === "PROVINCE") {
+        addLocation({ province: area.name, district: null, ward: null });
+        continue;
+      }
+      const parent = area.parent_id ? byId.get(area.parent_id) : undefined;
+      if (!parent) continue;
+      if (area.level === "DISTRICT") {
+        addLocation({ province: parent.name, district: area.name, ward: null });
+        continue;
+      }
+      const district = parent.level === "DISTRICT" ? parent : null;
+      const province = district ? (district.parent_id ? byId.get(district.parent_id) : undefined) : parent;
+      if (province) addLocation({ province: province.name, district: district?.name ?? null, ward: area.name });
+    }
+  }
+  const suspended = (province: string, district?: string, ward?: string): boolean =>
+    areaCatalog ? isSuspended(areaCatalog, { province, district, ward }) : false;
+
   const districtRecord: Record<string, string[]> = {};
-  for (const [province, values] of districts) districtRecord[province] = sortVietnamese(values);
+  for (const [province, values] of districts) {
+    if (suspended(province)) continue;
+    districtRecord[province] = sortVietnamese([...values].filter((district) => !suspended(province, district)));
+  }
 
   const wardRecord: Record<string, Record<string, string[]>> = {};
   for (const [province, districtMap] of wards) {
+    if (suspended(province)) continue;
     wardRecord[province] = {};
-    for (const [district, values] of districtMap) wardRecord[province][district] = sortVietnamese(values);
+    for (const [district, values] of districtMap) {
+      if (suspended(province, district)) continue;
+      wardRecord[province][district] = sortVietnamese([...values].filter((ward) => !suspended(province, district, ward)));
+    }
   }
 
   const wardsByProvinceRecord: Record<string, string[]> = {};
-  for (const [province, values] of wardsByProvince) wardsByProvinceRecord[province] = sortVietnamese(values);
+  for (const [province, values] of wardsByProvince) {
+    if (suspended(province)) continue;
+    wardsByProvinceRecord[province] = sortVietnamese([...values].filter((ward) => !suspended(province, undefined, ward)));
+  }
 
   const catalog: LocationCatalog = {
-    provinces: sortVietnamese(provinces),
+    provinces: sortVietnamese([...provinces].filter((province) => !suspended(province))),
     districts: districtRecord,
     wards: wardRecord,
     wardsByProvince: wardsByProvinceRecord,

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { fail, ok } from "@/lib/api-response";
+import { suspendedAreaError } from "@/lib/area-catalog";
 import { calculateShippingFeeBreakdown, isServiceAvailable } from "@/lib/shipping-fee";
 import { loadPricingConfig } from "@/lib/shipping-pricing";
 import { zoneForProvinces } from "@/lib/shipping-zone";
@@ -25,6 +26,11 @@ export async function POST(request: NextRequest) {
   const parsed = quoteSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail("Thông tin báo giá không hợp lệ", 400);
   const input = parsed.data;
+  const suspendedError = await suspendedAreaError([
+    { title: "Khu vực lấy hàng", province: input.pickup_province, ward: input.pickup_ward },
+    { title: "Khu vực giao hàng", province: input.delivery_province, ward: input.delivery_ward },
+  ]);
+  if (suspendedError) return ok({ zone: null, available: false, fee: null, chargeableKg: null, breakdown: null, message: suspendedError });
   let zone;
   try {
     zone = await zoneForProvinces(input.pickup_province, input.delivery_province);

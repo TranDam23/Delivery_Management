@@ -10,6 +10,7 @@ import {
   canBeReceiver,
   canBeSender,
 } from "@delivery/shared";
+import { suspendedAreaError } from "@/lib/area-catalog";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
@@ -271,6 +272,13 @@ export async function POST(request: NextRequest) {
   if (!deliveryAddress.ward?.trim() || !deliveryAddress.province?.trim()) {
     return fail("Địa chỉ giao hàng phải có xã/phường và tỉnh/thành phố", 400);
   }
+
+  // Khu vực bị tạm dừng trong danh mục khu vực thì không nhận đơn lấy/giao tại đó.
+  const suspendedError = await suspendedAreaError([
+    { title: "Địa chỉ lấy hàng", province: pickupAddress.province, district: pickupAddress.district, ward: pickupAddress.ward },
+    { title: "Địa chỉ giao hàng", province: deliveryAddress.province, district: deliveryAddress.district, ward: deliveryAddress.ward },
+  ]);
+  if (suspendedError) return fail(suspendedError, 400);
 
   // Cước phụ thuộc phạm vi tuyến (nội tỉnh/nội vùng/liên vùng), luôn tính lại ở server.
   let routeZoneValue;
