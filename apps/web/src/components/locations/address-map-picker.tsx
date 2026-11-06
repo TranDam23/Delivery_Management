@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { ExternalLink, MapPin } from "lucide-react";
 import { LocationSource } from "@delivery/shared";
 import { TextField } from "@/components/ui/field";
+import { reverseGeocodeOsm } from "./osm-geocode";
+
+// Leaflet dùng đối tượng window nên chỉ tải ở trình duyệt, và chỉ khi không dùng Google Maps.
+const OsmMap = dynamic(() => import("./osm-map"), {
+  ssr: false,
+  loading: () => <div className="flex h-[280px] items-center justify-center rounded-md bg-[#e5e7eb] text-[11px] text-slate-600">Đang tải bản đồ...</div>,
+});
 
 export interface AddressMapValue {
   latitude: number | null;
@@ -239,6 +247,27 @@ export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): Re
   // The map is initialized once per component. Pin movement is handled by Maps listeners.
   }, [apiKey]);
 
+  /** Chọn vị trí trên bản đồ OpenStreetMap: lưu tọa độ ngay, địa chỉ chữ (Nominatim) bổ sung sau nếu có. */
+  function selectOsmPoint(latitude: number, longitude: number): void {
+    setCoordinateError(null);
+    setLatitudeInput(latitude.toString());
+    setLongitudeInput(longitude.toString());
+    const coordinates = {
+      latitude,
+      longitude,
+      place_id: null,
+      formatted_address: null,
+      location_source: LocationSource.MAP_PIN,
+    } satisfies AddressMapValue;
+    onChangeRef.current(coordinates);
+    void reverseGeocodeOsm(latitude, longitude).then((result) => {
+      const current = valueRef.current;
+      // Bỏ qua nếu trong lúc chờ người dùng đã chọn điểm khác hoặc xóa ghim.
+      if (!result || current.latitude !== latitude || current.longitude !== longitude) return;
+      onChangeRef.current({ ...coordinates, place_id: result.placeId, formatted_address: result.formattedAddress });
+    });
+  }
+
   function updateCoordinates(nextLatitude: string, nextLongitude: string): void {
     manualCoordinateEditRef.current = true;
     setLatitudeInput(nextLatitude);
@@ -279,9 +308,12 @@ export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): Re
           <p className="text-[10px] text-dt-muted">Bấm vào bản đồ hoặc kéo ghim để chọn vị trí. Sau khi chọn, kiểm tra lại xã/phường và tỉnh/thành phố ở danh sách phía trên.</p>
         </>
       ) : (
-        <p className="rounded-md border border-dt-yellow/25 bg-dt-yellow/5 p-3 text-[10px] leading-5 text-dt-muted">
-          Bản đồ tương tác chưa được bật. Hãy cấu hình <code className="text-dt-yellow">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> trong <code>apps/web/.env</code> và bật Maps JavaScript API cùng Geocoding API. Bạn vẫn có thể dán tọa độ Google Maps vào hai ô bên dưới.
-        </p>
+        <>
+          <OsmMap latitude={value.latitude} longitude={value.longitude} onSelect={selectOsmPoint} />
+          <p className="text-[10px] text-dt-muted">
+            Bản đồ OpenStreetMap: bấm vào bản đồ hoặc kéo ghim để chọn vị trí. Địa chỉ chữ được lấy từ Nominatim (có thể chưa chi tiết ở vùng nông thôn); tọa độ ghim vẫn chính xác. Sau khi chọn, kiểm tra lại xã/phường và tỉnh/thành phố ở danh sách phía trên.
+          </p>
+        </>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
