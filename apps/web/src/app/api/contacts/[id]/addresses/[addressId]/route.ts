@@ -14,7 +14,7 @@ function seesAllContacts(roleCode: RoleCode): boolean {
 }
 
 function canManageContacts(roleCode: RoleCode): boolean {
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER;
+  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER || roleCode === RoleCode.DISPATCHER;
 }
 
 async function getAccessibleAddress(contactId: string, addressId: string, userId: string, roleCode: RoleCode) {

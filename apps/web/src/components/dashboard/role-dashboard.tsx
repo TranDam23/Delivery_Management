@@ -88,6 +88,7 @@ export const DISPATCHER_NAV: NavItem[] = [
   { label: "Tổng quan", icon: LayoutDashboard, active: true, href: "/dashboard/dispatcher" },
   { label: "Đơn hàng", icon: ClipboardList, href: "/dashboard/dispatcher/orders" },
   { label: "Tạo đơn hộ", icon: PackageCheck, href: "/dashboard/dispatcher/create-order" },
+  { label: "Người gửi/nhận", icon: Users, href: "/dashboard/dispatcher/contacts" },
   { label: "Kho & tuyến", icon: MapPin, href: "/dashboard/dispatcher/warehouses" },
   { label: "Khu vực", icon: MapPin, href: "/dashboard/dispatcher/regions" },
   { label: "Ngoại lệ vận chuyển", icon: AlertTriangle, href: "/dashboard/dispatcher/exceptions" },
