@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { geoPointFields, refineCoordinatePair, RoleCode, WarehouseLevelCode, WarehouseStatusCode } from "@delivery/shared";
+import { warehouseAreaError } from "@/lib/area-catalog";
 import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { warehouseGeoChanges } from "@/lib/geo";
@@ -52,6 +53,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const nextLevel = parsed.data.warehouse_level ?? current.warehouse_level;
   const nextProvince = parsed.data.province ?? current.province;
   const nextWard = parsed.data.ward !== undefined ? parsed.data.ward : current.ward;
+
+  // Chỉ kiểm tra danh mục khi đổi vị trí kho; tạm dừng/kích hoạt kho không bị ràng buộc.
+  if (parsed.data.province !== undefined || parsed.data.ward !== undefined) {
+    const areaError = await warehouseAreaError({ province: nextProvince, ward: nextWard }, nextLevel === WarehouseLevelCode.COMMUNE);
+    if (areaError) return fail(areaError, 400);
+  }
 
   let parentWarehouseId: string | null = null;
   let regionCode: string | null = parsed.data.region_code !== undefined

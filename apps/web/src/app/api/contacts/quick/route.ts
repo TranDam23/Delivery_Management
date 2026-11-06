@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ContactType, RoleCode } from "@delivery/shared";
 import { fail, ok } from "@/lib/api-response";
 import { getAuthFromRequest } from "@/lib/auth";
+import { suspendedAreaError } from "@/lib/area-catalog";
 import { addressGeoColumns } from "@/lib/geo";
 import { normalizeArea } from "@/lib/shipment-routing";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -31,6 +32,8 @@ export async function POST(request: NextRequest) {
   const parsed = quickSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Thông tin không hợp lệ", 400);
   const input = parsed.data;
+  const suspendedError = await suspendedAreaError([{ title: "Khu vực", province: input.province, district: input.district, ward: input.ward }]);
+  if (suspendedError) return fail(suspendedError, 400);
   const supabase = getSupabaseServiceClient();
 
   const { data: existing, error: findError } = await supabase

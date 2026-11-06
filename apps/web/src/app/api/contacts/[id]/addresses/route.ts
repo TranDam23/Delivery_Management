@@ -4,6 +4,7 @@ import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { addressGeoColumns } from "@/lib/geo";
+import { suspendedAreaError } from "@/lib/area-catalog";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -66,6 +67,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const parsed = createAddressSchema.safeParse(await request.json());
   if (!parsed.success) return fail(parsed.error.message);
+  const suspendedError = await suspendedAreaError([{ title: "Khu vực", province: parsed.data.province, district: parsed.data.district, ward: parsed.data.ward }]);
+  if (suspendedError) return fail(suspendedError, 400);
 
   const { count, error: countError } = await access.supabase
     .from("addresses")
