@@ -1,10 +1,12 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { ShipmentLegType } from "@delivery/shared";
+import { RoleCode, ShipmentLegType } from "@delivery/shared";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { checkOrderViewAccess } from "@/lib/order-access";
+import { buildOrderProgress } from "@/lib/order-progress";
+import { relationValue } from "@/lib/order-ui";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -112,5 +114,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     receiverConfirmation = { confirmedAt: delivery?.received_at ?? null };
   }
 
-  return ok({ order, events: events ?? [], warehouseEvents: warehouseEvents ?? [], receiverConfirmation, canConfirmReceipt, codTransaction, viewerRole: auth.roleCode, isCustomerParticipant: access.isCustomerParticipant });
+  // Tiến độ kho/chặng: người gửi và người nhận chỉ thấy vai trò, Admin/điều phối viên thấy tên nhân viên.
+  const progressResult = await buildOrderProgress(supabase, orderId, {
+    statusCode: relationValue(order.order_statuses)?.code ?? null,
+    revealStaffNames: auth.roleCode === RoleCode.ADMIN || auth.roleCode === RoleCode.DISPATCHER,
+  });
+  if (progressResult.error) console.error("Loading order progress failed", { orderId, error: progressResult.error });
+
+  return ok({ order, events: events ?? [], warehouseEvents: warehouseEvents ?? [], receiverConfirmation, canConfirmReceipt, codTransaction, viewerRole: auth.roleCode, isCustomerParticipant: access.isCustomerParticipant, progress: progressResult.progress });
 }

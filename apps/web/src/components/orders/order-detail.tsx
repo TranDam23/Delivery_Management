@@ -22,8 +22,11 @@ import {
   type OrderDetail,
   type OrderEvent,
 } from "@/lib/order-ui";
+import type { OrderProgress } from "@/lib/order-progress-types";
+import { OrderProgressCard } from "@/components/orders/order-progress-card";
 
 interface OrderDetailResponse {
+  progress?: OrderProgress | null;
   order: OrderDetail;
   events: OrderEvent[];
   warehouseEvents: Array<{
@@ -119,6 +122,8 @@ export function OrderDetailPage({ orderId, backHref = "/customer" }: { orderId: 
         <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-dt-yellow text-dt-bg"><PackageIcon /></span><div><p className="text-[11px] uppercase tracking-wide text-dt-muted">Trạng thái hiện tại</p><p className="mt-1 text-lg font-semibold">{statusLabel(order.order_statuses)}</p><p className="mt-1 text-[11px] text-dt-muted">Dịch vụ: {order.service_type}</p></div></div>
         <div className="flex flex-wrap items-center justify-end gap-2"><Link href={`/orders/track/${encodeURIComponent(order.tracking_code)}`} className={buttonClassName("secondary")}><Truck size={14} /> Xem hành trình và phản hồi</Link><Button onClick={() => void loadQr()} disabled={loadingQr}><QrCode size={14} />{loadingQr ? "Đang tạo QR..." : "Hiện QR"}</Button></div>
       </section>
+
+      <OrderProgressCard progress={result.progress} />
 
       {qrError ? <p className="rounded-md border border-dt-red/40 bg-dt-red/10 px-3 py-2 text-[12px] text-red-200">{qrError}</p> : null}
       {qr ? <Card className="items-center"><CardLabel>QR vận đơn</CardLabel><Image src={qr.qrDataUrl} alt={`QR của ${qr.trackingCode}`} width={208} height={208} unoptimized className="h-52 w-52 rounded-md bg-white p-2" /><a href={qr.qrDataUrl} download={`${qr.trackingCode}.png`} className="inline-flex items-center gap-2 text-[11px] text-dt-yellow hover:underline"><Download size={13} /> Tải QR xuống</a></Card> : null}

@@ -4,6 +4,7 @@ import { getAuthFromRequest } from "@/lib/auth";
 import { checkOrderViewAccess } from "@/lib/order-access";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ok, fail } from "@/lib/api-response";
+import { buildOrderProgress } from "@/lib/order-progress";
 import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
 import { estimateDeliveryDate, routeZone } from "@/lib/tracking-estimate";
 import { relationValue, statusLabel, type TrackingTimelineEntry } from "@/lib/order-ui";
@@ -92,6 +93,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const zone = routeZone(relationValue(order.pickup_warehouse), relationValue(order.delivery_warehouse));
   const estimate = estimateDeliveryDate(order.created_at, order.service_type, order.expected_delivery_date, zone);
+  // Tiến độ kho/chặng: tên nhân viên chỉ hiện cho Admin/điều phối viên được phép xem đơn.
+  const progressResult = await buildOrderProgress(supabase, order.id, {
+    statusCode: relationValue(order.order_statuses)?.code ?? null,
+    revealStaffNames: showStaffNames,
+  });
+  if (progressResult.error) console.error("Loading public order progress failed", { orderId: order.id, error: progressResult.error });
+
   const response = ok({
     order: {
       tracking_code: order.tracking_code,
@@ -103,6 +111,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     },
     timeline: timeline.map(({ kind, time, label, location, actor }) => ({ kind, time, label, location, actor })),
     blockchainEvents: blockchainResult.data ?? [],
+    progress: progressResult.progress,
   });
   response.headers.set("Cache-Control", "private, no-store");
   return response;
