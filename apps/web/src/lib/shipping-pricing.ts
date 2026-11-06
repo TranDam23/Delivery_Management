@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_PRICING_CONFIG,
   type AreaSurcharge,
@@ -19,9 +18,8 @@ export const SETTING_KEYS = {
   oversizeFee: "SHIPPING_OVERSIZE_FEE",
 } as const;
 
-/** Các bảng giá chưa có trong database.types.ts (file sinh tự động) nên dùng client không gán kiểu. */
-export function pricingDb(): SupabaseClient {
-  return getSupabaseServiceClient() as unknown as SupabaseClient;
+export function pricingDb(): ReturnType<typeof getSupabaseServiceClient> {
+  return getSupabaseServiceClient();
 }
 
 export function invalidatePricingCache(): void {

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { Json } from "@delivery/database";
 import { RoleCode, ShipmentLegStatusCode, ShipmentLegType, WarehouseLevelCode, WarehouseStatusCode } from "@delivery/shared";
 import { fail, ok } from "@/lib/api-response";
 import { writeAuditLog } from "@/lib/audit";
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   const supabase = getSupabaseServiceClient();
   const visible = await getVisibleOrderIds(supabase, auth);
   if (visible.error) return fail(visible.error, visible.status ?? 500);
-  const db = supabase as unknown as SupabaseClient;
+  const db = supabase;
 
   const searchParams = new URL(request.url).searchParams;
 
@@ -108,6 +108,15 @@ export async function GET(request: NextRequest) {
   return ok({ recent: data ?? [] });
 }
 
+interface RpcArgs {
+  p_leg_id: string | null;
+  p_keep_through: number | null;
+  p_leg_new_to: string | null;
+  p_leg_reset: boolean;
+  p_new_legs: Json | null;
+  p_new_delivery_wh: string | null;
+}
+
 interface LegInfo {
   id: string;
   order_id: string;
@@ -128,7 +137,7 @@ export async function POST(request: NextRequest) {
   const input = parsed.data;
 
   const supabase = getSupabaseServiceClient();
-  const db = supabase as unknown as SupabaseClient;
+  const db = supabase;
   const visible = await getVisibleOrderIds(supabase, auth);
   if (visible.error) return fail(visible.error, visible.status ?? 500);
 
@@ -153,7 +162,7 @@ export async function POST(request: NextRequest) {
   if (orderError) return fail(orderError.message, 500);
   if (!order) return fail("Không tìm thấy đơn hàng", 404);
 
-  let rpcArgs: Record<string, unknown>;
+  let rpcArgs: RpcArgs;
   let details: Record<string, unknown> = {};
 
   if (input.type === ExceptionType.WRONG_WAREHOUSE) {
@@ -168,7 +177,7 @@ export async function POST(request: NextRequest) {
     const plan = await planLegsFromWarehouse(input.actual_warehouse_id, order.delivery_warehouse_id);
     if (plan.error) return fail(plan.error, 409);
     details = { expected_warehouse_id: leg.to_warehouse_id, actual_warehouse_id: input.actual_warehouse_id, new_legs: plan.legs.length };
-    rpcArgs = { p_leg_id: leg.id, p_keep_through: leg.sequence_no, p_leg_new_to: input.actual_warehouse_id, p_leg_reset: false, p_new_legs: plan.legs, p_new_delivery_wh: null };
+    rpcArgs = { p_leg_id: leg.id, p_keep_through: leg.sequence_no, p_leg_new_to: input.actual_warehouse_id, p_leg_reset: false, p_new_legs: plan.legs as unknown as Json, p_new_delivery_wh: null };
   } else if (input.type === ExceptionType.WRONG_AREA) {
     if (input.delivery_warehouse_id === order.delivery_warehouse_id) return fail("Kho giao mới trùng kho giao hiện tại", 400);
     const { data: legs, error: legsError } = await supabase.from("shipment_legs")
@@ -186,7 +195,7 @@ export async function POST(request: NextRequest) {
     const plan = await planLegsFromWarehouse(keepLeg.to_warehouse_id, input.delivery_warehouse_id);
     if (plan.error) return fail(plan.error, 409);
     details = { old_delivery_warehouse_id: order.delivery_warehouse_id, new_delivery_warehouse_id: input.delivery_warehouse_id, replanned_from_warehouse_id: keepLeg.to_warehouse_id, new_legs: plan.legs.length };
-    rpcArgs = { p_leg_id: null, p_keep_through: keepThrough, p_leg_new_to: null, p_leg_reset: false, p_new_legs: plan.legs, p_new_delivery_wh: input.delivery_warehouse_id };
+    rpcArgs = { p_leg_id: null, p_keep_through: keepThrough, p_leg_new_to: null, p_leg_reset: false, p_new_legs: plan.legs as unknown as Json, p_new_delivery_wh: input.delivery_warehouse_id };
   } else {
     if (!leg || leg.leg_type !== ShipmentLegType.TRANSFER || leg.status !== ShipmentLegStatusCode.IN_PROGRESS) {
       return fail("Chỉ chặng trung chuyển đang vận chuyển mới báo chuyển kho thất bại được", 409);
@@ -200,7 +209,7 @@ export async function POST(request: NextRequest) {
     p_actor: auth.userId,
     p_exception_type: input.type,
     p_reason: input.reason,
-    p_details: details,
+    p_details: details as Json,
     ...rpcArgs,
   });
   if (rpcError) {

@@ -1663,6 +1663,168 @@ export type Database = {
           },
         ]
       }
+      administrative_areas: {
+        Row: {
+          created_at: string
+          id: string
+          level: string
+          name: string
+          parent_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          level: string
+          name: string
+          parent_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          level?: string
+          name?: string
+          parent_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "administrative_areas_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "administrative_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipment_exceptions: {
+        Row: {
+          created_at: string
+          created_by: string
+          details: Json
+          exception_type: string
+          id: string
+          order_id: string
+          reason: string
+          shipment_leg_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          details?: Json
+          exception_type: string
+          id?: string
+          order_id: string
+          reason: string
+          shipment_leg_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          details?: Json
+          exception_type?: string
+          id?: string
+          order_id?: string
+          reason?: string
+          shipment_leg_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_exceptions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_exceptions_shipment_leg_id_fkey"
+            columns: ["shipment_leg_id"]
+            isOneToOne: false
+            referencedRelation: "shipment_legs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_area_surcharges: {
+        Row: {
+          apply_to: string
+          created_at: string
+          id: string
+          note: string | null
+          province: string
+          status: string
+          surcharge_fee: number
+          updated_at: string
+          ward: string | null
+        }
+        Insert: {
+          apply_to?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          province: string
+          status?: string
+          surcharge_fee: number
+          updated_at?: string
+          ward?: string | null
+        }
+        Update: {
+          apply_to?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          province?: string
+          status?: string
+          surcharge_fee?: number
+          updated_at?: string
+          ward?: string | null
+        }
+        Relationships: []
+      }
+      shipping_tariffs: {
+        Row: {
+          base_fee: number
+          created_at: string
+          id: string
+          service_type: string
+          status: string
+          step_fee: number
+          updated_at: string
+          zone: string
+        }
+        Insert: {
+          base_fee: number
+          created_at?: string
+          id?: string
+          service_type: string
+          status?: string
+          step_fee: number
+          updated_at?: string
+          zone: string
+        }
+        Update: {
+          base_fee?: number
+          created_at?: string
+          id?: string
+          service_type?: string
+          status?: string
+          step_fee?: number
+          updated_at?: string
+          zone?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1826,6 +1988,22 @@ export type Database = {
           p_window_seconds: number
         }
         Returns: boolean
+      }
+      apply_shipment_exception: {
+        Args: {
+          p_actor: string
+          p_details: Json
+          p_exception_type: string
+          p_keep_through: number | null
+          p_leg_id: string | null
+          p_leg_new_to: string | null
+          p_leg_reset: boolean
+          p_new_delivery_wh: string | null
+          p_new_legs: Json | null
+          p_order_id: string
+          p_reason: string
+        }
+        Returns: string
       }
     }
     Enums: {

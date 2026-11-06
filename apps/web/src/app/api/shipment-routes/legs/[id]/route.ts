@@ -7,7 +7,6 @@ import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatch
 import { checkLegAssignable } from "@/lib/shipment-leg-rules";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ExceptionType } from "@/lib/shipment-exceptions";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -130,7 +129,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   // Đổi shipper của chặng đã có người phụ trách là một ngoại lệ vận chuyển: ghi lại để truy vết.
   if (previousStaffId && previousStaffId !== staff.id) {
     const reason = parsed.data.reason && parsed.data.reason.length >= 3 ? parsed.data.reason : "Phân công lại (không ghi lý do)";
-    const { error: exceptionError } = await (supabase as unknown as SupabaseClient).from("shipment_exceptions").insert({
+    const { error: exceptionError } = await supabase.from("shipment_exceptions").insert({
       order_id: assignmentLeg.order_id,
       shipment_leg_id: id,
       exception_type: ExceptionType.REASSIGNED,

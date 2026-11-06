@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { RoleCode, type AuthTokenPayload } from "@delivery/shared";
 import { getUserOperationalScope } from "@/lib/dispatcher-scope";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -16,9 +15,8 @@ export interface AdministrativeArea {
   updated_at: string;
 }
 
-/** Bảng khu vực chưa nằm trong database.types.ts (file sinh tự động) nên dùng client không gán kiểu. */
-export function areaDb(): SupabaseClient {
-  return getSupabaseServiceClient() as unknown as SupabaseClient;
+export function areaDb(): ReturnType<typeof getSupabaseServiceClient> {
+  return getSupabaseServiceClient();
 }
 
 export function normalizeAreaName(value: string): string {
