@@ -4,6 +4,7 @@ import { Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CONTACT_TYPE_LABEL, ContactType } from "@delivery/shared";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
+import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -28,14 +29,21 @@ interface Address {
   district: string | null;
   province: string | null;
   is_default: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  place_id: string | null;
+  formatted_address: string | null;
+  location_source: AddressMapValue["location_source"];
 }
 
 interface ListResult { items: Contact[]; total: number; page: number; pageSize: number }
 interface AddressesResult { contact: { id: string }; items: Address[] }
 
-interface AddressForm { id: string | null; recipient_name: string; phone: string; address_line: string; province: string; district: string; ward: string }
+interface AddressForm extends AddressMapValue { id: string | null; recipient_name: string; phone: string; address_line: string; province: string; district: string; ward: string }
 
-const EMPTY_ADDRESS: AddressForm = { id: null, recipient_name: "", phone: "", address_line: "", province: "", district: "", ward: "" };
+const EMPTY_PIN: AddressMapValue = { latitude: null, longitude: null, place_id: null, formatted_address: null, location_source: null };
+
+const EMPTY_ADDRESS: AddressForm = { id: null, recipient_name: "", phone: "", address_line: "", province: "", district: "", ward: "", ...EMPTY_PIN };
 
 function addressText(address: Address): string {
   return [address.address_line, address.ward, address.district, address.province].filter(Boolean).join(", ");
@@ -92,6 +100,8 @@ function ContactRow({ contact, onChanged, onMessage }: { contact: Contact; onCha
     const body = JSON.stringify({
       recipient_name: addressForm.recipient_name, phone: addressForm.phone, address_line: addressForm.address_line,
       province: addressForm.province, district: addressForm.district, ward: addressForm.ward,
+      latitude: addressForm.latitude, longitude: addressForm.longitude, place_id: addressForm.place_id,
+      formatted_address: addressForm.formatted_address, location_source: addressForm.location_source,
     });
     const ok = await run(
       () => addressForm.id
@@ -140,7 +150,7 @@ function ContactRow({ contact, onChanged, onMessage }: { contact: Contact; onCha
           {addresses.map((address) => (
             <div key={address.id} className="flex flex-wrap items-center gap-3 rounded-dt bg-dt-panel px-3 py-2">
               <p className="min-w-0 flex-1">{addressText(address)}{address.is_default ? <span className="ml-2 rounded-full bg-dt-yellow/10 px-2 py-0.5 text-[10px] text-dt-yellow">Mặc định</span> : null}</p>
-              <button type="button" aria-label="Sửa địa chỉ" onClick={() => setAddressForm({ id: address.id, recipient_name: address.recipient_name, phone: address.phone, address_line: address.address_line, province: address.province ?? "", district: address.district ?? "", ward: address.ward ?? "" })} className="text-dt-muted hover:text-dt-text"><Pencil size={13} /></button>
+              <button type="button" aria-label="Sửa địa chỉ" onClick={() => setAddressForm({ id: address.id, recipient_name: address.recipient_name, phone: address.phone, address_line: address.address_line, province: address.province ?? "", district: address.district ?? "", ward: address.ward ?? "", latitude: address.latitude, longitude: address.longitude, place_id: address.place_id, formatted_address: address.formatted_address, location_source: address.location_source })} className="text-dt-muted hover:text-dt-text"><Pencil size={13} /></button>
               <button type="button" aria-label="Xóa địa chỉ" disabled={busy} onClick={() => void removeAddress(address)} className="text-dt-muted hover:text-red-300"><Trash2 size={13} /></button>
             </div>
           ))}
@@ -148,8 +158,9 @@ function ContactRow({ contact, onChanged, onMessage }: { contact: Contact; onCha
             <div className="grid gap-3 rounded-dt border border-dt-yellow/40 p-3 sm:grid-cols-2">
               <TextField label="Tên người nhận tại địa chỉ" required value={addressForm.recipient_name} onChange={(event) => setAddressForm({ ...addressForm, recipient_name: event.target.value })} />
               <TextField label="Số điện thoại" required inputMode="tel" value={addressForm.phone} onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value })} />
-              <div className="sm:col-span-2"><AddressLocationFields value={addressForm} onChange={(location) => setAddressForm({ ...addressForm, ...location })} /></div>
-              <TextField label="Số nhà, tên đường" required wrapperClassName="sm:col-span-2" value={addressForm.address_line} onChange={(event) => setAddressForm({ ...addressForm, address_line: event.target.value })} />
+              <div className="sm:col-span-2"><AddressLocationFields value={addressForm} onChange={(location) => setAddressForm({ ...addressForm, ...location, ...EMPTY_PIN })} /></div>
+              <TextField label="Số nhà, tên đường" required wrapperClassName="sm:col-span-2" value={addressForm.address_line} onChange={(event) => setAddressForm({ ...addressForm, address_line: event.target.value, ...EMPTY_PIN })} />
+              <div className="sm:col-span-2"><AddressMapPicker value={addressForm} onChange={(pin) => setAddressForm({ ...addressForm, ...pin })} /></div>
               <p className="text-[11px] text-dt-muted sm:col-span-2">Sửa địa chỉ đã dùng trong đơn cũ sẽ đổi thông tin hiển thị của các đơn đó nhưng không tự lập lại tuyến; nên thêm địa chỉ mới thay vì sửa.</p>
               <div className="flex gap-2 sm:col-span-2">
                 <Button disabled={busy} onClick={() => void saveAddress()}>Lưu địa chỉ</Button>

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { ContactType, RoleCode } from "@delivery/shared";
+import { ContactType, RoleCode, addressGeoFields, refineCoordinatePair } from "@delivery/shared";
 import { fail, ok } from "@/lib/api-response";
 import { getAuthFromRequest } from "@/lib/auth";
 import { suspendedAreaError } from "@/lib/area-catalog";
@@ -17,7 +17,9 @@ const quickSchema = z.object({
   ward: z.string().trim().min(1, "Phường/Xã không được để trống").max(120),
   district: z.string().trim().max(120).optional().default(""),
   province: z.string().trim().min(1, "Tỉnh/Thành phố không được để trống").max(120),
-});
+  // Ghim bản đồ (tùy chọn): khi có thì lưu để lập tuyến theo vị trí thật.
+  ...addressGeoFields,
+}).superRefine(refineCoordinatePair);
 
 /**
  * POST /api/contacts/quick — tìm hoặc tạo người gửi/nhận (theo số điện thoại) cùng một địa chỉ
@@ -76,7 +78,14 @@ export async function POST(request: NextRequest) {
     normalizeArea(address.address_line) === normalizeArea(input.address_line)
     && normalizeArea(address.ward) === normalizeArea(input.ward)
     && normalizeArea(address.province) === normalizeArea(input.province));
-  if (sameAddress) return ok({ contact_id: contactId, address_id: sameAddress.id });
+  if (sameAddress) {
+    // Địa chỉ đã có: cập nhật ghim nếu lần này điều phối viên chọn vị trí trên bản đồ.
+    if (input.latitude !== undefined && input.latitude !== null) {
+      const { error } = await supabase.from("addresses").update(addressGeoColumns(input)).eq("id", sameAddress.id);
+      if (error) return fail(error.message, 500);
+    }
+    return ok({ contact_id: contactId, address_id: sameAddress.id });
+  }
 
   const isFirst = !defaultAddressId || (addresses ?? []).length === 0;
   const { data: address, error: insertError } = await supabase
@@ -90,7 +99,7 @@ export async function POST(request: NextRequest) {
       district: input.district || null,
       province: input.province,
       is_default: isFirst,
-      ...addressGeoColumns({}),
+      ...addressGeoColumns(input),
     })
     .select("id")
     .single();

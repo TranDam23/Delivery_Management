@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { PackagePlus } from "lucide-react";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
+import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { PageHeader } from "@/components/layout/page-header";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { apiFetch } from "@/lib/api-client";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
 import { describeQuote, useShippingQuote } from "@/lib/use-shipping-quote";
 
-interface Party {
+interface Party extends AddressMapValue {
   name: string;
   phone: string;
   email: string;
@@ -23,7 +24,8 @@ interface Party {
   ward: string;
 }
 
-const EMPTY_PARTY: Party = { name: "", phone: "", email: "", addressLine: "", province: "", district: "", ward: "" };
+const EMPTY_PIN: AddressMapValue = { latitude: null, longitude: null, place_id: null, formatted_address: null, location_source: null };
+const EMPTY_PARTY: Party = { name: "", phone: "", email: "", addressLine: "", province: "", district: "", ward: "", ...EMPTY_PIN };
 
 interface Created {
   id: string;
@@ -41,8 +43,9 @@ function PartyFields({ title, value, onChange }: { title: string; value: Party; 
         <TextField label="Số điện thoại" required type="tel" inputMode="numeric" value={value.phone} onChange={(event) => onChange({ ...value, phone: event.target.value })} hint="10 chữ số, bắt đầu bằng 0" />
       </div>
       <TextField label="Email" type="email" value={value.email} onChange={(event) => onChange({ ...value, email: event.target.value })} hint="Không bắt buộc" />
-      <AddressLocationFields value={value} onChange={(location) => onChange({ ...value, ...location })} />
-      <TextField label="Số nhà, tên đường" required value={value.addressLine} onChange={(event) => onChange({ ...value, addressLine: event.target.value })} />
+      <AddressLocationFields value={value} onChange={(location) => onChange({ ...value, ...location, ...EMPTY_PIN })} />
+      <TextField label="Số nhà, tên đường" required value={value.addressLine} onChange={(event) => onChange({ ...value, addressLine: event.target.value, ...EMPTY_PIN })} />
+      <AddressMapPicker value={value} onChange={(pin) => onChange({ ...value, ...pin })} />
     </Card>
   );
 }
@@ -103,6 +106,8 @@ export function DispatcherOrderCreatePage({ ordersPath }: { ordersPath: string }
         body: JSON.stringify({
           role, name: party.name, phone: party.phone, email: party.email || undefined,
           address_line: party.addressLine, ward: party.ward, district: party.district, province: party.province,
+          latitude: party.latitude, longitude: party.longitude, place_id: party.place_id,
+          formatted_address: party.formatted_address, location_source: party.location_source,
         }),
       });
       const senderRef = await toQuick("sender", sender);
