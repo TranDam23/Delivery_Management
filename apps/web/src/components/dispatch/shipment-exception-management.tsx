@@ -1,13 +1,13 @@
 "use client";
 
-import { AlertTriangle, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api-client";
 
-type ExceptionType = "WRONG_WAREHOUSE" | "WRONG_AREA" | "TRANSFER_FAILED" | "REASSIGNED";
+type ExceptionType = "WRONG_WAREHOUSE" | "WRONG_AREA" | "TRANSFER_FAILED" | "REASSIGNED" | "MANUAL_RETURN";
 
 interface WarehouseRef { id: string; code: string; name: string; province: string }
 interface WarehouseHit extends WarehouseRef { ward: string | null; warehouse_level: string }
@@ -63,6 +63,7 @@ const TYPE_LABEL: Record<ExceptionType, string> = {
   WRONG_AREA: "Giao sai khu vực",
   TRANSFER_FAILED: "Chuyển kho thất bại",
   REASSIGNED: "Phân công lại",
+  MANUAL_RETURN: "Hoàn hàng",
 };
 const LEG_LABEL = { PICKUP: "Lấy hàng", TRANSFER: "Trung chuyển", LAST_MILE: "Giao cuối" } as const;
 const STATUS_LABEL: Record<string, string> = {
@@ -73,7 +74,8 @@ type Action =
   | { kind: "WRONG_WAREHOUSE"; leg: Leg }
   | { kind: "TRANSFER_FAILED"; leg: Leg }
   | { kind: "REASSIGNED"; leg: Leg }
-  | { kind: "WRONG_AREA" };
+  | { kind: "WRONG_AREA" }
+  | { kind: "MANUAL_RETURN" };
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleString("vi-VN");
@@ -191,7 +193,9 @@ export function ShipmentExceptionPage(): React.JSX.Element {
           ? { type: action.kind, leg_id: action.leg.id, actual_warehouse_id: warehouse?.id, reason }
           : action.kind === "WRONG_AREA"
             ? { type: action.kind, order_id: detail.order.id, delivery_warehouse_id: warehouse?.id, reason }
-            : { type: action.kind, leg_id: action.leg.id, reason };
+            : action.kind === "MANUAL_RETURN"
+              ? { type: action.kind, order_id: detail.order.id, reason }
+              : { type: action.kind, leg_id: action.leg.id, reason };
         await apiFetch("/api/shipment-exceptions", { method: "POST", body: JSON.stringify(body) });
       }
       setNotice(`Đã xử lý: ${TYPE_LABEL[action.kind]}.`);
@@ -274,6 +278,7 @@ export function ShipmentExceptionPage(): React.JSX.Element {
                 <div className="flex gap-2">
                   <Button variant="secondary" disabled={loading} onClick={() => void loadOrder(detail.order.tracking_code)}><RefreshCw size={13} /> Tải lại</Button>
                   {orderOpen ? <Button variant="secondary" onClick={() => openAction({ kind: "WRONG_AREA" })}><AlertTriangle size={13} /> Giao sai khu vực</Button> : null}
+                  {orderOpen ? <Button variant="secondary" onClick={() => openAction({ kind: "MANUAL_RETURN" })}><Undo2 size={13} /> Hoàn hàng</Button> : null}
                 </div>
               </div>
               {!orderOpen ? <p className="text-[12px] text-dt-muted">Đơn đã kết thúc hoặc đang hoàn hàng nên không xử lý ngoại lệ được.</p> : null}
@@ -308,6 +313,7 @@ export function ShipmentExceptionPage(): React.JSX.Element {
                 <CardLabel>{TYPE_LABEL[action.kind]}</CardLabel>
                 {action.kind === "WRONG_WAREHOUSE" ? <p className="text-[12px] text-dt-muted">Chọn kho thực tế đang giữ hàng. Chặng {action.leg.sequence_no} sẽ được ghi nhận đã nhập tại kho này và các chặng phía sau được lập lại từ đó.</p> : null}
                 {action.kind === "WRONG_AREA" ? <p className="text-[12px] text-dt-muted">Chọn kho giao đúng khu vực. Các chặng chưa bắt đầu sẽ được lập lại từ kho đang giữ hàng đến kho giao mới.</p> : null}
+                {action.kind === "MANUAL_RETURN" ? <p className="text-[12px] text-dt-muted">Hàng đang ở kho sẽ được đưa về kho lấy hàng ban đầu rồi trả cho người gửi. Các chặng giao chưa bắt đầu bị gỡ, đơn chuyển sang trạng thái đang hoàn. Chỉ dùng được khi hàng đang nằm ở kho (không có chặng nào đang chạy).</p> : null}
                 {action.kind === "TRANSFER_FAILED" ? <p className="text-[12px] text-dt-muted">Chặng {action.leg.sequence_no} quay về trạng thái chờ xuất kho (lần {action.leg.attempt_no + 1}); kho gửi sẽ xuất lại.</p> : null}
                 {action.kind === "REASSIGNED" ? (
                   <label className="flex flex-col gap-1 text-[11px] text-dt-muted">

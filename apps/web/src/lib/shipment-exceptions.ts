@@ -6,6 +6,7 @@ export const ExceptionType = {
   WRONG_AREA: "WRONG_AREA",
   TRANSFER_FAILED: "TRANSFER_FAILED",
   REASSIGNED: "REASSIGNED",
+  MANUAL_RETURN: "MANUAL_RETURN",
 } as const;
 export type ExceptionType = (typeof ExceptionType)[keyof typeof ExceptionType];
 

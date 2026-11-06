@@ -1,11 +1,13 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import type { Json } from "@delivery/database";
-import { RoleCode, ShipmentLegStatusCode, ShipmentLegType, WarehouseLevelCode, WarehouseStatusCode } from "@delivery/shared";
+import { BlockchainEventType, OrderStatusCode, RoleCode, ShipmentLegStatusCode, ShipmentLegType, WarehouseLevelCode, WarehouseStatusCode } from "@delivery/shared";
 import { fail, ok } from "@/lib/api-response";
 import { writeAuditLog } from "@/lib/audit";
 import { getAuthFromRequest } from "@/lib/auth";
+import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
 import { getVisibleOrderIds } from "@/lib/order-access";
+import { hasReturnedToWarehouse } from "@/lib/shipment-leg-rules";
 import { ExceptionType, planLegsFromWarehouse } from "@/lib/shipment-exceptions";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 
@@ -15,6 +17,7 @@ const bodySchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal(ExceptionType.WRONG_WAREHOUSE), leg_id: z.string().uuid(), actual_warehouse_id: z.string().uuid(), reason }),
   z.object({ type: z.literal(ExceptionType.WRONG_AREA), order_id: z.string().uuid(), delivery_warehouse_id: z.string().uuid(), reason }),
   z.object({ type: z.literal(ExceptionType.TRANSFER_FAILED), leg_id: z.string().uuid(), reason }),
+  z.object({ type: z.literal(ExceptionType.MANUAL_RETURN), order_id: z.string().uuid(), reason }),
 ]);
 
 const LEG_COLUMNS = `id, order_id, sequence_no, leg_type, status, attempt_no, is_return, assigned_staff_id, from_warehouse_id, to_warehouse_id,
@@ -36,6 +39,9 @@ function rpcMessage(message: string): { text: string; status: number } {
     ["Leg already received", "Chặng này đã được nhập kho"],
     ["Only an in-progress transfer leg can be reset", "Chỉ chặng trung chuyển đang vận chuyển mới báo chuyển kho thất bại được"],
     ["Leg not found", "Không tìm thấy chặng vận chuyển"],
+    ["Order has not been picked up", "Đơn chưa được lấy hàng nên không hoàn hàng được; hãy dùng chức năng hủy đơn"],
+    ["A leg is still in progress", "Hàng đang trên đường hoặc đang giao. Hãy chờ hàng đến kho, hoặc để shipper báo giao thất bại rồi kho nhận lại hàng"],
+    ["Return legs required", "Không lập được tuyến hoàn hàng"],
   ];
   const found = table.find(([key]) => message.includes(key));
   return found ? { text: found[1], status: 409 } : { text: message, status: 500 };
@@ -126,6 +132,82 @@ interface LegInfo {
   to_warehouse_id: string | null;
 }
 
+/**
+ * Hoàn hàng thủ công: hàng đang nằm ở một kho thì lập tuyến đưa về kho lấy hàng ban đầu rồi trả người gửi.
+ * Vị trí hàng = kho đích của chặng đã hoàn tất gần nhất, hoặc kho phát nếu chặng giao cuối vừa thất bại
+ * và kho đã nhận lại kiện. Các chặng xuôi chưa bắt đầu bị gỡ trong cùng giao dịch.
+ */
+async function startManualReturn(params: {
+  request: NextRequest;
+  userId: string;
+  order: { id: string; tracking_code: string; pickup_warehouse_id: string | null };
+  reason: string;
+}) {
+  const { request, userId, order, reason: returnReason } = params;
+  const supabase = getSupabaseServiceClient();
+  if (!order.pickup_warehouse_id) return fail("Đơn chưa có kho lấy hàng để hoàn về", 409);
+
+  const { data: legs, error: legsError } = await supabase.from("shipment_legs")
+    .select("id, sequence_no, leg_type, status, from_warehouse_id, to_warehouse_id, attempt_no")
+    .eq("order_id", order.id).eq("is_return", false).order("sequence_no");
+  if (legsError) return fail(legsError.message, 500);
+  if (!legs || legs.length === 0) return fail("Đơn chưa được lập tuyến", 409);
+  if (legs.some((item) => item.status === ShipmentLegStatusCode.IN_PROGRESS)) {
+    return fail("Hàng đang trên đường hoặc đang giao. Hãy chờ hàng đến kho, hoặc để shipper báo giao thất bại rồi kho nhận lại hàng", 409);
+  }
+  const settled = legs.filter((item) => item.status === ShipmentLegStatusCode.COMPLETED || item.status === ShipmentLegStatusCode.FAILED);
+  const last = settled[settled.length - 1];
+  if (!last || !legs.some((item) => item.leg_type === ShipmentLegType.PICKUP && item.status === ShipmentLegStatusCode.COMPLETED)) {
+    return fail("Đơn chưa được lấy hàng nên không hoàn hàng được; hãy dùng chức năng hủy đơn", 409);
+  }
+
+  let holdingWarehouseId: string | null;
+  if (last.leg_type === ShipmentLegType.LAST_MILE) {
+    if (last.status !== ShipmentLegStatusCode.FAILED) return fail("Đơn đã giao xong, không hoàn hàng được", 409);
+    const returned = await hasReturnedToWarehouse(supabase, { id: last.id, from_warehouse_id: last.from_warehouse_id, attempt_no: last.attempt_no });
+    if (returned.error) return fail(returned.error, 500);
+    if (!returned.returned) return fail("Kho phát chưa xác nhận nhận lại hàng sau lần giao thất bại, chưa thể hoàn hàng", 409);
+    holdingWarehouseId = last.from_warehouse_id;
+  } else {
+    holdingWarehouseId = last.to_warehouse_id;
+  }
+  if (!holdingWarehouseId) return fail("Không xác định được kho đang giữ hàng", 409);
+
+  const plan = await planLegsFromWarehouse(holdingWarehouseId, order.pickup_warehouse_id);
+  if (plan.error) return fail(plan.error, 409);
+
+  const details = { holding_warehouse_id: holdingWarehouseId, return_to_warehouse_id: order.pickup_warehouse_id, kept_through: last.sequence_no, new_legs: plan.legs.length };
+  const { data: exceptionId, error: rpcError } = await supabase.rpc("start_manual_return", {
+    p_order_id: order.id,
+    p_actor: userId,
+    p_reason: returnReason,
+    p_keep_through: last.sequence_no,
+    p_new_legs: plan.legs as unknown as Json,
+    p_details: details as Json,
+  });
+  if (rpcError) {
+    const mapped = rpcMessage(rpcError.message);
+    return fail(mapped.text, mapped.status);
+  }
+
+  await queueBlockchainEvent({
+    orderId: order.id,
+    trackingCode: order.tracking_code,
+    eventType: BlockchainEventType.RETURNING,
+    performedBy: userId,
+    payload: { reason: "MANUAL_RETURN", note: returnReason, holdingWarehouseId, returnLegCount: plan.legs.length },
+  });
+  await writeAuditLog({
+    userId,
+    action: "SHIPMENT_MANUAL_RETURN",
+    entityType: "order",
+    entityId: order.id,
+    newData: { exceptionId, reason: returnReason, status: OrderStatusCode.RETURNING, ...details },
+    request,
+  });
+  return ok({ id: exceptionId, type: ExceptionType.MANUAL_RETURN }, 201);
+}
+
 /** POST /api/shipment-exceptions — xử lý một ngoại lệ vận chuyển và lập lại tuyến nếu cần. */
 export async function POST(request: NextRequest) {
   const auth = getAuthFromRequest(request);
@@ -144,7 +226,7 @@ export async function POST(request: NextRequest) {
   // Xác định đơn và chặng liên quan.
   let leg: LegInfo | null = null;
   let orderId: string;
-  if (input.type === ExceptionType.WRONG_AREA) {
+  if (input.type === ExceptionType.WRONG_AREA || input.type === ExceptionType.MANUAL_RETURN) {
     orderId = input.order_id;
   } else {
     const { data, error } = await supabase.from("shipment_legs")
@@ -158,9 +240,11 @@ export async function POST(request: NextRequest) {
   if (visible.ids && !visible.ids.includes(orderId)) return fail("Đơn hàng không thuộc phạm vi của bạn", 403);
 
   const { data: order, error: orderError } = await supabase.from("orders")
-    .select("id, delivery_warehouse_id").eq("id", orderId).maybeSingle();
+    .select("id, tracking_code, delivery_warehouse_id, pickup_warehouse_id").eq("id", orderId).maybeSingle();
   if (orderError) return fail(orderError.message, 500);
   if (!order) return fail("Không tìm thấy đơn hàng", 404);
+
+  if (input.type === ExceptionType.MANUAL_RETURN) return startManualReturn({ request, userId: auth.userId, order, reason: input.reason });
 
   let rpcArgs: RpcArgs;
   let details: Record<string, unknown> = {};

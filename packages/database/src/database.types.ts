@@ -1989,6 +1989,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      start_manual_return: {
+        Args: {
+          p_actor: string
+          p_details: Json
+          p_keep_through: number
+          p_new_legs: Json
+          p_order_id: string
+          p_reason: string
+        }
+        Returns: string
+      }
       apply_shipment_exception: {
         Args: {
           p_actor: string
