@@ -6,6 +6,8 @@ import { fail, ok } from "@/lib/api-response";
 import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatcher-scope";
 import { checkLegAssignable } from "@/lib/shipment-leg-rules";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { ExceptionType } from "@/lib/shipment-exceptions";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -13,6 +15,8 @@ interface RouteParams {
 
 const assignmentSchema = z.object({
   assigned_staff_id: z.string().uuid(),
+  /** Lý do khi phân công lại shipper cho chặng đã có người phụ trách (ghi vào nhật ký ngoại lệ). */
+  reason: z.string().trim().max(500).optional(),
 });
 
 function canAssignLeg(roleCode: RoleCode): boolean {
@@ -56,12 +60,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
   const { data: leg, error: legError } = await supabase
     .from("shipment_legs")
-    .select("id, order_id, sequence_no, leg_type, from_warehouse_id, to_warehouse_id, responsibility_province, status, attempt_no, is_return")
+    .select("id, order_id, sequence_no, leg_type, from_warehouse_id, to_warehouse_id, responsibility_province, status, attempt_no, is_return, assigned_staff_id")
     .eq("id", id)
     .maybeSingle();
   if (legError) return fail(legError.message, 500);
   if (!leg) return fail("Không tìm thấy chặng vận chuyển", 404);
-  const assignmentLeg = leg as AssignmentLeg;
+  const assignmentLeg = leg as AssignmentLeg & { assigned_staff_id: string | null };
+  const previousStaffId = assignmentLeg.assigned_staff_id;
   const assignable = await checkLegAssignable(supabase, assignmentLeg);
   if (assignable.error) return fail(assignable.error, assignable.status);
 
@@ -121,6 +126,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     .select("*")
     .single();
   if (updateError) return fail(updateError.message, 500);
+
+  // Đổi shipper của chặng đã có người phụ trách là một ngoại lệ vận chuyển: ghi lại để truy vết.
+  if (previousStaffId && previousStaffId !== staff.id) {
+    const reason = parsed.data.reason && parsed.data.reason.length >= 3 ? parsed.data.reason : "Phân công lại (không ghi lý do)";
+    const { error: exceptionError } = await (supabase as unknown as SupabaseClient).from("shipment_exceptions").insert({
+      order_id: assignmentLeg.order_id,
+      shipment_leg_id: id,
+      exception_type: ExceptionType.REASSIGNED,
+      reason,
+      details: { from_staff_id: previousStaffId, to_staff_id: staff.id, leg_type: assignmentLeg.leg_type },
+      created_by: auth.userId,
+    });
+    if (exceptionError) console.error("Không ghi được nhật ký phân công lại", exceptionError.message);
+  }
 
   const { data: existingDelivery, error: existingDeliveryError } = await supabase
     .from("deliveries")

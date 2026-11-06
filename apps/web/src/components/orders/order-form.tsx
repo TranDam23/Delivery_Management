@@ -24,7 +24,7 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { usePaymentAvailability } from "@/lib/use-payment-availability";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
-import { useShippingQuote } from "@/lib/use-shipping-quote";
+import { describeQuote, useShippingQuote } from "@/lib/use-shipping-quote";
 
 interface FormState {
   senderId: string;
@@ -394,10 +394,14 @@ export function NewOrderPage(): React.JSX.Element {
   const weight = numericValue(form.weight);
   const pickupProvince = senderSource === "manual" ? manualSender.province : senderAddress?.province ?? selectedSender?.default_address?.province;
   const deliveryProvince = receiverSource === "manual" ? manualReceiver.province : receiverAddress?.province ?? selectedReceiver?.default_address?.province;
+  const pickupWard = senderSource === "manual" ? manualSender.ward : senderAddress?.ward ?? selectedSender?.default_address?.ward;
+  const deliveryWard = receiverSource === "manual" ? manualReceiver.ward : receiverAddress?.ward ?? selectedReceiver?.default_address?.ward;
   const { quote } = useShippingQuote({
     service: form.serviceType as "standard" | "express" | "same_day",
     pickupProvince,
     deliveryProvince,
+    pickupWard,
+    deliveryWard,
     items: [{ weight, length: numericValue(form.length) || undefined, width: numericValue(form.width) || undefined, height: numericValue(form.height) || undefined, quantity: numericValue(form.quantity) || 1 }],
   });
   const estimatedFee = quote?.fee ?? null;
@@ -776,7 +780,7 @@ export function NewOrderPage(): React.JSX.Element {
               {SERVICE_OPTIONS.map((option) => <option key={option.value} value={option.value} className="bg-dt-panel2">{option.label}</option>)}
             </SelectField>
             <TextField label="COD cần thu hộ" type="number" min="0" max="999999999999.99" step="0.01" value={form.codAmount} onChange={(event) => update("codAmount", event.target.value)} hint="Để 0 nếu đơn không thu hộ" />
-            <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} feeNote={quote && !quote.available ? quote.message : null} availability={paymentAvailability} />
+            <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={estimatedFee} feeDetail={describeQuote(quote)} feeNote={quote && !quote.available ? quote.message : null} availability={paymentAvailability} />
           </Card>
 
           <Card className="border-dt-green/25 bg-dt-green/5">

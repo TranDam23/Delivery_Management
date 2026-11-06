@@ -7,6 +7,7 @@ import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
 import { guestOrderSchema } from "@/lib/guest-order-schema";
 import { calculateShippingFee, isServiceAvailable } from "@/lib/shipping-fee";
 import { zoneForProvinces } from "@/lib/shipping-zone";
+import { loadPricingConfig } from "@/lib/shipping-pricing";
 import { verifyGuestEmailOtp } from "@/lib/guest-email-otp";
 import { takePublicLookupSlot } from "@/lib/public-lookup-limit";
 import { createAutomaticShipmentRoute } from "@/lib/shipment-route-planner";
@@ -56,7 +57,8 @@ export async function POST(request: NextRequest) {
   let zone;
   try { zone = await zoneForProvinces(input.sender.province, input.receiver.province); }
   catch { return fail("Chưa tính được phạm vi tuyến lúc này.", 503); }
-  if (!isServiceAvailable(input.serviceType, zone)) return fail("Dịch vụ giao trong ngày chỉ áp dụng nội tỉnh. Hãy chọn dịch vụ khác.");
+  const pricing = await loadPricingConfig();
+  if (!isServiceAvailable(input.serviceType, zone, pricing)) return fail("Dịch vụ giao trong ngày chỉ áp dụng nội tỉnh. Hãy chọn dịch vụ khác.");
 
   let verified: { userId: string } | null;
   try { verified = await verifyGuestEmailOtp(input.email, input.otp); }
@@ -77,7 +79,10 @@ export async function POST(request: NextRequest) {
     trackingCode,
     pickupWarehouseId: pickup.id,
     deliveryWarehouseId: delivery.id,
-    totalFee: calculateShippingFee(input.serviceType, [{ weight: input.item.weight ?? undefined, quantity: input.item.quantity }], zone),
+    totalFee: calculateShippingFee(input.serviceType, [{ weight: input.item.weight ?? undefined, length: input.item.length ?? undefined, width: input.item.width ?? undefined, height: input.item.height ?? undefined, quantity: input.item.quantity }], zone, pricing, {
+      pickup: { province: input.sender.province, ward: input.sender.ward },
+      delivery: { province: input.receiver.province, ward: input.receiver.ward },
+    }),
     verifiedAuthUserId: verified.userId,
   };
   const { data, error } = await getSupabaseServiceClient().rpc("create_guest_order", { p_payload: payload as Json });

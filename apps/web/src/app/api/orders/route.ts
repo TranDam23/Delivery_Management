@@ -20,7 +20,9 @@ import { queueBlockchainEvent } from "@/lib/blockchain/queue-event";
 import { isQrPaymentMethod, shippingFeePayerSchema, shippingPaymentMethodSchema } from "@/lib/shipping-payment";
 import { calculateShippingFee, isServiceAvailable } from "@/lib/shipping-fee";
 import { zoneForProvinces } from "@/lib/shipping-zone";
+import { loadPricingConfig } from "@/lib/shipping-pricing";
 import { getVisibleOrderIds } from "@/lib/order-access";
+import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatcher-scope";
 
 const createOrderSchema = z.object({
   sender_id: z.string().uuid(),
@@ -96,9 +98,9 @@ interface OrderWarehouseCandidate {
 }
 
 function canCreateOrder(roleCode: RoleCode): boolean {
-  // Don hang do khach hang tao (hoac admin tao ho cho nghiep vu noi bo).
-  // Dieu phoi vien chi tiep nhan va dieu phoi don da duoc tao.
-  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER;
+  // Don hang do khach hang tu tao, hoac Admin / dieu phoi vien tao ho khach
+  // (tiep nhan tai quay). Dieu phoi vien chi tao don co kho lay hang thuoc pham vi cua minh.
+  return roleCode === RoleCode.ADMIN || roleCode === RoleCode.CUSTOMER || roleCode === RoleCode.DISPATCHER;
 }
 
 /** GET /api/orders — danh sach don hang (loc theo status, phan trang). */
@@ -240,6 +242,11 @@ export async function POST(request: NextRequest) {
       return fail("Khách hàng chỉ được dùng contact trong sổ địa chỉ của mình", 403);
     }
   }
+  if (auth.roleCode === RoleCode.DISPATCHER) {
+    if (sender.user_id !== auth.userId || receiver.user_id !== auth.userId) {
+      return fail("Điều phối viên chỉ được dùng người gửi/nhận do chính mình nhập khi tạo đơn hộ", 403);
+    }
+  }
   if (parsed.data.receiver_is_sender && auth.roleCode !== RoleCode.CUSTOMER) {
     return fail("Chỉ khách hàng mới có thể chỉ định mình là người nhận.", 403);
   }
@@ -272,10 +279,14 @@ export async function POST(request: NextRequest) {
   } catch {
     return fail("Chưa tính được phạm vi tuyến lúc này. Vui lòng thử lại.", 503);
   }
-  if (!isServiceAvailable(parsed.data.service_type, routeZoneValue)) {
+  const pricing = await loadPricingConfig();
+  if (!isServiceAvailable(parsed.data.service_type, routeZoneValue, pricing)) {
     return fail("Dịch vụ giao trong ngày chỉ áp dụng nội tỉnh. Hãy chọn dịch vụ khác.", 400);
   }
-  const shippingFee = calculateShippingFee(parsed.data.service_type, parsed.data.items, routeZoneValue);
+  const shippingFee = calculateShippingFee(parsed.data.service_type, parsed.data.items, routeZoneValue, pricing, {
+    pickup: { province: pickupAddress.province, ward: pickupAddress.ward },
+    delivery: { province: deliveryAddress.province, ward: deliveryAddress.ward },
+  });
 
   // Gán kho con ngay lúc tạo đơn để điều phối viên nhận được đơn trong hàng
   // chờ của kho lấy hàng. Hàm chọn kho ưu tiên cùng xã/phường + quận/huyện,
@@ -292,6 +303,16 @@ export async function POST(request: NextRequest) {
   }
   if (!deliveryWarehouse) {
     return fail("Chưa có kho con hoạt động gần địa chỉ giao hàng. Hãy chọn xã/phường khác hoặc liên hệ điều phối viên.", 400);
+  }
+
+  if (auth.roleCode === RoleCode.DISPATCHER) {
+    // Đơn chỉ hiện trong hàng chờ của điều phối viên khi kho lấy hàng thuộc phạm vi của họ.
+    const dispatcherScope = await getUserOperationalScope(auth);
+    if (dispatcherScope.error) return fail(dispatcherScope.error, 500);
+    if (!dispatcherScope.warehouseId) return fail("Tài khoản điều phối viên chưa được gán kho phụ trách", 409);
+    if (!warehouseBelongsToScope(dispatcherScope, pickupWarehouse)) {
+      return fail("Địa chỉ lấy hàng nằm ngoài tỉnh/kho bạn phụ trách. Hãy nhờ điều phối viên của khu vực đó tạo đơn.", 403);
+    }
   }
 
   const { data: createdStatus, error: statusError } = await supabase

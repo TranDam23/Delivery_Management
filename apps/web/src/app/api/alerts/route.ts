@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { RoleCode } from "@delivery/shared";
-import { scanAlertsIfDue } from "@/lib/alert-scanner";
+import { getLastAlertScanAt, scanAlertsIfDue } from "@/lib/alert-scanner";
 import { fail, ok } from "@/lib/api-response";
 import { getAuthFromRequest } from "@/lib/auth";
 import { scopedOrderIds } from "@/lib/order-scope";
@@ -37,5 +37,5 @@ export async function GET(request: NextRequest) {
   if (scope.ids !== null) query = query.in("order_id", scope.ids);
   const { data, error, count } = await query;
   if (error) return fail(error.message, 500);
-  return ok({ items: data ?? [], total: count ?? 0, page, pageSize });
+  return ok({ items: data ?? [], total: count ?? 0, page, pageSize, lastScanAt: await getLastAlertScanAt().catch(() => null) });
 }

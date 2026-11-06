@@ -19,7 +19,8 @@ interface AlertItem {
   status: "open" | "acknowledged" | "resolved" | "dismissed";
   orders: { tracking_code: string } | { tracking_code: string }[] | null;
 }
-interface AlertsResult { items: AlertItem[]; total: number; page: number; pageSize: number }
+interface AlertsResult { items: AlertItem[]; total: number; page: number; pageSize: number; lastScanAt?: string | null }
+interface ScanResult { scanned: number; late: number; stuck: number; invalidFlow: number; resolved: number }
 
 const TYPE_LABEL: Record<string, string> = {
   DELIVERY_LATE: "Đơn trễ hạn",
@@ -39,6 +40,8 @@ export function AlertsPage({ orderBasePath }: { orderBasePath: string }): React.
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,6 +55,20 @@ export function AlertsPage({ orderBasePath }: { orderBasePath: string }): React.
     }
   }, [filter, page]);
   useEffect(() => { void load(); }, [load]);
+
+  async function scanNow(): Promise<void> {
+    setScanning(true);
+    setScanNotice(null);
+    try {
+      const scan = await apiFetch<ScanResult>("/api/alerts/scan", { method: "POST" });
+      setScanNotice(`Đã quét ${scan.scanned} đơn: ${scan.late} trễ hạn, ${scan.stuck} kẹt trạng thái, ${scan.invalidFlow} luồng bất thường mới; tự đóng ${scan.resolved} cảnh báo.`);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không quét được cảnh báo");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   async function update(id: string, status: "acknowledged" | "resolved" | "dismissed"): Promise<void> {
     setBusyId(id);
@@ -67,7 +84,8 @@ export function AlertsPage({ orderBasePath }: { orderBasePath: string }): React.
 
   const pages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   return <div className="mx-auto max-w-[1440px] px-5 py-6 md:px-8 md:py-8">
-    <PageHeader heading="Cảnh báo vận hành" subtitle="Đơn trễ hạn, bị giữ quá lâu hoặc có trạng thái bất thường, tự động phát hiện." action={<Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button>} />
+    <PageHeader heading="Cảnh báo vận hành" subtitle={`Đơn trễ hạn, bị giữ quá lâu hoặc có trạng thái bất thường, tự động phát hiện. Lần quét gần nhất: ${result?.lastScanAt ? formatDateTime(result.lastScanAt) : "chưa có"}.`} action={<div className="flex gap-2"><Button variant="secondary" onClick={() => void scanNow()} disabled={scanning}><RefreshCw size={14} className={scanning ? "animate-spin" : undefined} /> Quét ngay</Button><Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : undefined} /> Làm mới</Button></div>} />
+    {scanNotice ? <p role="status" className="mt-4 rounded-dt border border-dt-green/30 bg-dt-green/10 px-4 py-3 text-[12px] text-dt-green">{scanNotice}</p> : null}
     <div className="mt-4 flex flex-wrap gap-2">
       {FILTERS.map(([value, label]) => <button key={value} type="button" onClick={() => { setFilter(value); setPage(1); }} className={`rounded-full px-3 py-1.5 text-[11px] ${filter === value ? "bg-dt-yellow text-dt-bg" : "bg-dt-panel2 text-dt-muted hover:text-dt-text"}`}>{label}</button>)}
     </div>

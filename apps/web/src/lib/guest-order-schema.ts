@@ -27,6 +27,10 @@ export const guestOrderSchema = z.object({
     type: z.string().trim().max(100),
     quantity: z.number().int().positive().max(10000),
     weight: z.number().finite().positive().max(10000).nullable(),
+    // Kích thước kiện (cm). Form cũ chưa gửi các trường này nên để tùy chọn.
+    length: z.number().finite().positive().max(1000).nullable().optional(),
+    width: z.number().finite().positive().max(1000).nullable().optional(),
+    height: z.number().finite().positive().max(1000).nullable().optional(),
     declaredValue: z.number().finite().nonnegative().max(1000000000).nullable(),
     note: z.string().trim().max(1000),
   }),

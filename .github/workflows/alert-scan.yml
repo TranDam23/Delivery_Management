@@ -1,0 +1,29 @@
+name: Quet canh bao van hanh
+
+# Goi POST /api/alerts/scan dinh ky de phat hien don tre / ket trang thai / luong bat thuong
+# ke ca khi khong co ai mo web. Can khai bao 2 secret trong repo (Settings > Secrets and variables > Actions):
+#   APP_URL      vi du https://delivertrust.example.com (khong co dau / o cuoi)
+#   CRON_SECRET  trung voi bien moi truong CRON_SECRET cua apps/web
+# Neu chua khai bao secret, job se bo qua (khong bao loi).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    name: Quet canh bao
+    runs-on: ubuntu-latest
+    steps:
+      - name: Goi API quet canh bao
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::notice::Chua khai bao secret APP_URL/CRON_SECRET, bo qua."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 60 \
+            -X POST "${APP_URL%/}/api/alerts/scan" \
+            -H "x-cron-secret: $CRON_SECRET"
