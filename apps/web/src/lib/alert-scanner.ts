@@ -3,6 +3,8 @@ import { relationValue } from "@/lib/order-ui";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { estimateDeliveryDate, routeZone, type ZoneWarehouse } from "@/lib/tracking-estimate";
 
+const LAST_SCAN_KEY = "ALERT_LAST_SCAN";
+
 export const ALERT_TYPE = {
   LATE: "DELIVERY_LATE",
   STUCK: "STUCK_STATUS",
@@ -168,19 +170,29 @@ export async function scanOperationalAlerts(now = new Date()): Promise<AlertScan
     if (resolveError) throw new Error(resolveError.message);
     result.resolved = resolvedIds.length;
   }
+  await db.from("system_settings").upsert(
+    { key: LAST_SCAN_KEY, value: now.toISOString(), description: "Lần quét cảnh báo tự động gần nhất" },
+    { onConflict: "key" },
+  );
   return result;
+}
+
+/** Thời điểm quét cảnh báo gần nhất (ISO) hoặc null nếu chưa từng quét. */
+export async function getLastAlertScanAt(): Promise<string | null> {
+  const { data } = await getSupabaseServiceClient().from("system_settings").select("value").eq("key", LAST_SCAN_KEY).maybeSingle();
+  return data?.value && Number.isFinite(Date.parse(data.value)) ? data.value : null;
 }
 
 /** Quét lười biếng khi người dùng vận hành mở trang; tránh quét lại trong khoảng ngắn. */
 export async function scanAlertsIfDue(): Promise<AlertScanResult | null> {
   const db = getSupabaseServiceClient();
   const intervalMinutes = await numberSetting("ALERT_SCAN_INTERVAL_MINUTES", 10);
-  const { data: last } = await db.from("system_settings").select("value").eq("key", "ALERT_LAST_SCAN").maybeSingle();
+  const { data: last } = await db.from("system_settings").select("value").eq("key", LAST_SCAN_KEY).maybeSingle();
   const lastTime = Date.parse(last?.value ?? "");
   if (Number.isFinite(lastTime) && Date.now() - lastTime < intervalMinutes * 60 * 1000) return null;
   // Giữ chỗ trước khi quét để các request đồng thời không quét trùng.
   const { error } = await db.from("system_settings").upsert(
-    { key: "ALERT_LAST_SCAN", value: new Date().toISOString(), description: "Lần quét cảnh báo tự động gần nhất" },
+    { key: LAST_SCAN_KEY, value: new Date().toISOString(), description: "Lần quét cảnh báo tự động gần nhất" },
     { onConflict: "key" },
   );
   if (error) return null;

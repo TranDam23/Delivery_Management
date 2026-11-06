@@ -6,7 +6,7 @@ import { AddressLocationFields } from "@/components/locations/address-location-f
 import { SelectField, TextField } from "@/components/ui/field";
 import { guestPost } from "./guest-api";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
-import { useShippingQuote } from "@/lib/use-shipping-quote";
+import { describeQuote, useShippingQuote } from "@/lib/use-shipping-quote";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
 
 type Address = { name: string; phone: string; addressLine: string; province: string; district: string; ward: string; email?: string };
@@ -38,6 +38,9 @@ export function GuestOrderForm(): React.JSX.Element {
   const [type, setType] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [weight, setWeight] = useState("");
+  const [length, setLength] = useState("");
+  const [width, setWidth] = useState("");
+  const [height, setHeight] = useState("");
   const [declaredValue, setDeclaredValue] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
@@ -48,7 +51,9 @@ export function GuestOrderForm(): React.JSX.Element {
     service: serviceType as "standard" | "express" | "same_day",
     pickupProvince: sender.province,
     deliveryProvince: receiver.province,
-    items: [{ weight: Number(weight) || undefined, quantity: Number(quantity) || 1 }],
+    pickupWard: sender.ward,
+    deliveryWard: receiver.ward,
+    items: [{ weight: Number(weight) || undefined, length: Number(length) || undefined, width: Number(width) || undefined, height: Number(height) || undefined, quantity: Number(quantity) || 1 }],
   });
 
   async function sendOtp() {
@@ -72,6 +77,7 @@ export function GuestOrderForm(): React.JSX.Element {
         shippingFeePayer, shippingPaymentMethod,
         codAmount: Number(codAmount), note,
         item: { name, type, quantity: Number(quantity), weight: weight ? Number(weight) : null,
+          length: length ? Number(length) : null, width: width ? Number(width) : null, height: height ? Number(height) : null,
           declaredValue: declaredValue ? Number(declaredValue) : null, note: "" },
       });
       setTrackingCode(result.trackingCode);
@@ -98,13 +104,16 @@ export function GuestOrderForm(): React.JSX.Element {
         <TextField label="Loại hàng" value={type} onChange={(event) => setType(event.target.value)} />
         <TextField label="Số lượng" type="number" min="1" required value={quantity} onChange={(event) => setQuantity(event.target.value)} />
         <TextField label="Khối lượng (kg)" type="number" min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(event.target.value)} />
+        <TextField label="Dài (cm)" type="number" min="0.1" max="1000" step="0.1" value={length} onChange={(event) => setLength(event.target.value)} />
+        <TextField label="Rộng (cm)" type="number" min="0.1" max="1000" step="0.1" value={width} onChange={(event) => setWidth(event.target.value)} />
+        <TextField label="Cao (cm)" type="number" min="0.1" max="1000" step="0.1" value={height} onChange={(event) => setHeight(event.target.value)} />
         <TextField label="Giá trị khai báo (đ)" type="number" min="0" value={declaredValue} onChange={(event) => setDeclaredValue(event.target.value)} />
         <TextField label="COD cần thu hộ (đ)" type="number" min="0" required value={codAmount} onChange={(event) => setCodAmount(event.target.value)} />
       </div>
       <SelectField label="Dịch vụ" required value={serviceType} onChange={(event) => setServiceType(event.target.value)}>
         <option value="standard">Tiêu chuẩn</option><option value="express">Hỏa tốc</option><option value="same_day">Trong ngày (chỉ nội tỉnh)</option>
       </SelectField>
-      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={quote?.fee ?? null} feeNote={quote && !quote.available ? quote.message : null} />
+      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={quote?.fee ?? null} feeDetail={describeQuote(quote)} feeNote={quote && !quote.available ? quote.message : null} />
       <TextField label="Ghi chú giao hàng" value={note} onChange={(event) => setNote(event.target.value)} />
     </section>
     <section className="space-y-4 rounded-dt border border-dt-border bg-dt-panel p-5">
