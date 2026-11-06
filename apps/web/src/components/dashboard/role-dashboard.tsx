@@ -81,7 +81,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Cảnh báo", icon: AlertTriangle, href: "/dashboard/admin/alerts" },
   { label: "Nhật ký thao tác", icon: FileCheck2, href: "/dashboard/admin/audit-logs" },
   { label: "Thông báo", icon: Bell, href: "/dashboard/admin/notifications" },
-  { label: "Cài đặt", icon: Settings },
+  { label: "Hồ sơ cá nhân", icon: Settings, href: "/dashboard/admin/account" },
 ];
 
 export const DISPATCHER_NAV: NavItem[] = [

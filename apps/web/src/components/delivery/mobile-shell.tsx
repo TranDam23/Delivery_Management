@@ -8,7 +8,7 @@ import type { AuthenticatedUser } from "@delivery/shared";
 import { clearAuth, getStoredUser } from "@/lib/api-client";
 import { NotificationUnreadBadge } from "@/components/notifications/unread-badge";
 
-export type DeliveryTab = "home" | "routes" | "scan" | "cod" | "handover" | "notifications";
+export type DeliveryTab = "home" | "routes" | "scan" | "cod" | "handover" | "notifications" | "account";
 
 const NAV: Array<{ tab: DeliveryTab; label: string; icon: LucideIcon; href: string }> = [
   { tab: "home", label: "Trang chủ", icon: Home, href: "/dashboard/delivery" },
@@ -58,13 +58,13 @@ export function DeliveryMobileShell({
     <div className="min-h-dvh bg-dt-bg text-dt-text">
       <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-[#111216] sm:border-x sm:border-dt-border">
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-dt-border bg-[#111216]/95 px-4 py-3 backdrop-blur">
-          <div className="flex min-w-0 items-center gap-3">
+          <Link href="/dashboard/delivery/account" aria-label="Hồ sơ cá nhân" className="flex min-w-0 items-center gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-dt-yellow text-[11px] font-bold text-dt-bg">{initials(user?.full_name)}</span>
             <div className="min-w-0">
               <p className="truncate text-[13px] font-medium">{user?.full_name ?? "Nhân viên giao nhận"}</p>
               <p className="truncate text-[11px] text-dt-muted">{subtitle}</p>
             </div>
-          </div>
+          </Link>
           <div className="flex shrink-0 items-center gap-1">
             {action}
             <button type="button" onClick={logout} aria-label="Đăng xuất" className="flex h-10 w-10 items-center justify-center rounded-full text-dt-muted hover:bg-dt-panel2 hover:text-dt-text">

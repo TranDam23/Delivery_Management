@@ -92,11 +92,14 @@ function firstValidationMessage(fieldErrors: Record<string, string[] | undefined
 interface ProfilePageProps {
   homeHref?: string;
   homeLabel?: string;
+  /** Bố cục một cột cho khung hẹp (giao diện điện thoại của shipper trên màn hình lớn). */
+  compact?: boolean;
 }
 
 export function ProfilePage({
   homeHref = "/customer",
   homeLabel = "Về tổng quan",
+  compact = false,
 }: ProfilePageProps = {}): React.JSX.Element {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [form, setForm] = useState<ProfileFormState>(INITIAL_PROFILE);
@@ -115,10 +118,11 @@ export function ProfilePage({
 
     async function loadProfile(): Promise<void> {
       try {
-        const [profileResult, ordersPage] = await Promise.all([
-          apiFetch<ProfileResponse>("/api/auth/me"),
-          apiFetch<Paginated<OrderListItem>>("/api/orders?pageSize=100").catch(() => null),
-        ]);
+        const profileResult = await apiFetch<ProfileResponse>("/api/auth/me");
+        // Admin xem toàn bộ đơn của hệ thống nên không có số liệu "đơn của tài khoản" để hiển thị.
+        const ordersPage = profileResult.user.roleCode === RoleCode.ADMIN
+          ? null
+          : await apiFetch<Paginated<OrderListItem>>("/api/orders?pageSize=100").catch(() => null);
 
         if (!mounted) return;
         setUser(profileResult.user);
@@ -249,7 +253,7 @@ export function ProfilePage({
       {!loading && user ? (
         <div className="flex max-w-[1100px] flex-col gap-4">
           <Card className="overflow-hidden border-dt-yellow/30">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className={compact ? "flex flex-col gap-4" : "flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"}>
               <div className="flex items-center gap-4">
                 <div className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-[14px] border border-dt-yellow bg-dt-panel2 text-[23px] font-bold text-dt-yellow">
                   {initials(user.full_name)}
@@ -268,7 +272,8 @@ export function ProfilePage({
               </div>
             </div>
 
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            {user.roleCode === RoleCode.ADMIN ? null : (
+            <div className={compact ? "mt-2 grid grid-cols-1 gap-3" : "mt-2 grid gap-3 sm:grid-cols-2"}>
               <ProfileMetric
                 label="Tổng đơn"
                 value={stats ? String(stats.total).padStart(2, "0") : "—"}
@@ -282,9 +287,10 @@ export function ProfilePage({
                 icon={<CheckCircle2 size={17} className="text-dt-green" />}
               />
             </div>
+            )}
           </Card>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className={compact ? "grid gap-4" : "grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]"}>
             <Card className="gap-4">
               <div>
                 <CardLabel>Thông tin cá nhân</CardLabel>
@@ -294,7 +300,7 @@ export function ProfilePage({
               </div>
 
               <form onSubmit={handleProfileSubmit} className="flex flex-col gap-4">
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className={compact ? "grid gap-4" : "grid gap-4 md:grid-cols-2"}>
                   <TextField
                     label="Họ và tên"
                     required
@@ -335,7 +341,7 @@ export function ProfilePage({
                   </SelectField>
                 ) : null}
 
-                <div className={`grid gap-3 rounded-dt bg-dt-panel2 p-3 ${user.roleCode === RoleCode.DISPATCHER || user.roleCode === RoleCode.WAREHOUSE_STAFF ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                <div className={`grid gap-3 rounded-dt bg-dt-panel2 p-3 ${user.roleCode === RoleCode.DISPATCHER || user.roleCode === RoleCode.WAREHOUSE_STAFF ? (compact ? "" : "sm:grid-cols-3") : (compact ? "" : "sm:grid-cols-2")}`}>
                   <ProfileInfo icon={<UserRound size={15} />} label="Vai trò" value={ROLE_LABEL[user.roleCode]} />
                   <ProfileInfo icon={<ShieldCheck size={15} />} label="Quyền hạn" value="Theo vai trò hệ thống" />
                   {user.roleCode === RoleCode.DISPATCHER || user.roleCode === RoleCode.WAREHOUSE_STAFF ? (
