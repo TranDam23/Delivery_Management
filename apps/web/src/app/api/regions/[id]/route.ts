@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return fail("Dữ liệu cập nhật không hợp lệ", 400);
 
-  const patch: Record<string, string> = {};
+  const patch: { name?: string; status?: string } = {};
   const nextName = parsed.data.name === undefined ? undefined : normalizeAreaName(parsed.data.name);
   if (nextName !== undefined && nextName !== area.name) {
     // Tên khu vực được lưu dạng text trong kho/địa chỉ, nên chỉ đổi tên khi chưa có dữ liệu nào dùng.
