@@ -13,6 +13,7 @@ import { formatDateTime, relationValue, statusLabel, type TrackingResult } from 
 import { OrderStatusCode } from "@delivery/shared";
 import { RecipientFeedback } from "@/components/orders/recipient-feedback";
 import { TrackingTimeline } from "@/components/orders/tracking-timeline";
+import { OrderProgressCard } from "@/components/orders/order-progress-card";
 
 export function TrackingSearchPage({ publicMode = false }: { publicMode?: boolean }): React.JSX.Element {
   const router = useRouter();
@@ -72,6 +73,7 @@ export function TrackingDetailPage({ trackingCode, publicMode = false }: { track
     <>
       <PageHeader heading={`Hành trình ${result.order.tracking_code}`} subtitle={`Tạo lúc ${formatDateTime(result.order.created_at)}`} action={<Link href={searchPath} className={buttonClassName("secondary")}><ArrowLeft size={14} /> Tra cứu mã khác</Link>} />
       <section className="flex items-center justify-between gap-3 rounded-dt border border-dt-yellow/30 bg-dt-yellow/5 p-5"><div><p className="text-[10px] uppercase tracking-wide text-dt-muted">Trạng thái hiện tại</p><p className="mt-1 text-lg font-semibold">{statusLabel(result.order.order_statuses)}</p><p className="mt-1 text-[11px] text-dt-muted">Dịch vụ: {result.order.service_type}</p></div><Truck className="text-dt-yellow" size={25} /></section>
+      <OrderProgressCard progress={result.progress} />
       <TrackingTimeline entries={result.timeline} />
       <Card><CardLabel>Ngày giao dự kiến</CardLabel><p className="mt-2 text-[13px] font-medium">{result.order.expected_delivery_date ? formatDateTime(result.order.expected_delivery_date) : "Chưa có dự kiến"}</p>{result.order.estimate_source === "service" && result.order.expected_delivery_date ? <p className="mt-1 text-[11px] text-dt-muted">Ước tính tham khảo theo gói dịch vụ, chưa tính tuyến thực tế.</p> : null}</Card>
       <Card>

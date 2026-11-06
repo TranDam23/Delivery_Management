@@ -1,4 +1,5 @@
 import { OrderStatusCode } from "@delivery/shared";
+import type { OrderProgress } from "@/lib/order-progress-types";
 
 export interface OrderStatusSummary {
   code: string;
@@ -110,6 +111,7 @@ export interface TrackingTimelineEntry {
 export interface TrackingResult {
   order: TrackingOrder;
   timeline: TrackingTimelineEntry[];
+  progress?: OrderProgress | null;
   blockchainEvents: Array<{
     event_type: string;
     transaction_hash: string | null;
