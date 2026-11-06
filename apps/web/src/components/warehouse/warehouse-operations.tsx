@@ -3,6 +3,7 @@
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -20,10 +21,12 @@ import {
   type Warehouse,
 } from "@delivery/shared";
 import { PageHeader } from "@/components/layout/page-header";
+import { QrCameraScanner } from "@/components/delivery/qr-camera-scanner";
 import { Button } from "@/components/ui/button";
 import { SelectField, TextField } from "@/components/ui/field";
 import { apiFetch } from "@/lib/api-client";
 import { formatDateTime, formatVnd, relationValue } from "@/lib/order-ui";
+import { resolveTrackingCode } from "@/lib/qr-scan";
 import { legStatusLabel, legTypeLabel } from "@/lib/shipment-routing";
 import {
   computeLegStates,
@@ -85,6 +88,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
   const [page, setPage] = useState(1);
   const [searchCode, setSearchCode] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +159,45 @@ export function WarehouseOperationsPage(): React.JSX.Element {
   const pageCount = Math.max(1, Math.ceil(primary.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pagedPrimary = primary.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  /**
+   * Quét QR (camera, súng quét hoặc gõ mã): mở đúng chặng cần nhập kho/xuất kho của đơn đó.
+   * Việc ghi nhận (thời gian, kho, người thực hiện) vẫn do nhân viên bấm xác nhận sau khi kiểm hàng.
+   */
+  async function handleScan(raw: string): Promise<void> {
+    setCameraOpen(false);
+    setError(null);
+    setNotice(null);
+    let code: string;
+    try {
+      code = await resolveTrackingCode(raw);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không đọc được mã QR.");
+      return;
+    }
+    setSearchCode(code);
+    setPage(1);
+    const forOrder = legs.filter((leg) => relationValue(leg.orders)?.tracking_code.toUpperCase() === code);
+    if (forOrder.length === 0) {
+      setError(`Đơn ${code} không có chặng nào đi qua kho này.`);
+      return;
+    }
+    const inbound = forOrder.find((leg) => ["INBOUND", "RETURN_INBOUND"].includes(stateOf(leg)));
+    const outbound = forOrder.find((leg) => stateOf(leg) === "OUTBOUND");
+    const target = inbound ?? outbound;
+    if (target) {
+      changeTab(inbound ? "inbound" : "outbound");
+      setExpandedId(target.id);
+      setNotice(inbound
+        ? `Đã quét ${code}: kiểm hàng rồi bấm "${stateOf(target) === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}".`
+        : `Đã quét ${code}: bấm xác nhận để xuất kho.`);
+      return;
+    }
+    changeTab("all");
+    setExpandedId(forOrder[0]!.id);
+    const state = stateOf(forOrder[0]!);
+    setNotice(`Đã quét ${code}: ${state === "INCOMING" ? "hàng chưa tới kho, chưa nhập được" : state === "HOLDING" ? "hàng đang giữ tại kho, chờ điều phối phân công shipper" : "chưa có thao tác nhập/xuất cần làm tại kho này"}.`);
+  }
 
   function inspectionFor(legId: string): InspectionDraft {
     return inspectionByLeg[legId] ?? EMPTY_INSPECTION;
@@ -427,10 +470,12 @@ export function WarehouseOperationsPage(): React.JSX.Element {
             <input
               value={searchCode}
               onChange={(event) => { setSearchCode(event.target.value); setPage(1); }}
-              placeholder="Quét hoặc nhập mã DH..."
+              onKeyDown={(event) => { if (event.key === "Enter" && searchCode.trim()) { event.preventDefault(); void handleScan(searchCode); } }}
+              placeholder="Quét hoặc nhập mã DH, rồi Enter..."
               className="min-w-0 flex-1 bg-transparent text-[13px] text-dt-text placeholder:text-dt-muted focus:outline-none"
             />
           </label>
+          <Button onClick={() => setCameraOpen(true)} className="w-full sm:w-auto"><Camera size={14} /> Quét QR bằng camera</Button>
         </div>
 
         {loading && legs.length === 0 ? <p className="mt-4 text-[12px] text-dt-muted">Đang tải danh sách chặng...</p> : null}
@@ -452,6 +497,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
           </div>
         ) : null}
       </section>
+      {cameraOpen ? <QrCameraScanner onClose={() => setCameraOpen(false)} onResult={(code) => void handleScan(code)} /> : null}
     </div>
   );
 }
