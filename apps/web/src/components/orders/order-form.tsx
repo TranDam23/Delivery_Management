@@ -322,7 +322,8 @@ async function ensureManualContact({
         type,
         name: input.name.trim(),
         phone: normalizedPhone,
-        email: input.email.trim().toLowerCase() || null,
+        // Bỏ trường email khi để trống: API chỉ nhận email hợp lệ hoặc không gửi, không nhận null.
+        ...(input.email.trim() ? { email: input.email.trim().toLowerCase() } : {}),
       }),
     });
   } else {
