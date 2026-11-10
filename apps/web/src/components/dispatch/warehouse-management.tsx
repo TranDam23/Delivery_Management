@@ -252,6 +252,9 @@ function RouteDetailsModal({ routeItem, staff, currentUser, saving, onClose, onA
               const legStaffFree = legStaff.filter((member) => !shipperIsFull(member) || member.id === leg.assigned_staff_id);
               const fullWarning = fullShipperWarning(legStaff.filter((member) => member.id !== leg.assigned_staff_id));
               const legKindText = leg.leg_type === ShipmentLegType.PICKUP ? "lấy hàng" : "giao hàng";
+              // Chặng giao cuối chỉ chờ khi chặng liền trước (nhập kho đích) chưa hoàn tất.
+              const previousLeg = routeItem.legs.find((candidate) => candidate.sequence_no === leg.sequence_no - 1);
+              const waitingForGoods = leg.leg_type === ShipmentLegType.LAST_MILE && leg.status === ShipmentLegStatusCode.PENDING && !!previousLeg && previousLeg.status !== ShipmentLegStatusCode.COMPLETED;
               return <section key={leg.id} className="rounded-md border border-dt-border bg-dt-panel2 p-3 sm:p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xs font-semibold">Chặng {leg.sequence_no}: {legTypeLabel(leg.leg_type, leg.is_return)}</h3>
@@ -260,11 +263,11 @@ function RouteDetailsModal({ routeItem, staff, currentUser, saving, onClose, onA
                 <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-dt-muted">{leg.from_warehouse ? warehouseLabel(leg.from_warehouse) : "Người gửi"}<ArrowRight size={12} />{leg.to_warehouse ? warehouseLabel(leg.to_warehouse) : leg.is_return ? "Người gửi (hoàn hàng)" : "Người nhận"}</p>
                 {leg.updated_at && <p className="mt-1 text-[10px] text-dt-muted">Cập nhật {formatDateTime(leg.updated_at)}</p>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {canAssignShipper(leg) ? <select aria-label={`Phân công chặng ${leg.sequence_no}`} value={leg.assigned_staff_id ?? ""} onChange={(event) => onAssign(leg.id, event.target.value)} disabled={saving || leg.status === ShipmentLegStatusCode.COMPLETED || leg.status === ShipmentLegStatusCode.CANCELLED || (leg.leg_type === ShipmentLegType.LAST_MILE && leg.status === ShipmentLegStatusCode.PENDING)} className="h-9 min-w-[210px] rounded-dt border border-dt-border bg-dt-panel px-2 text-[11px] text-dt-text"><option value="">Chọn nhân viên</option>{legStaff.map((member) => <option key={member.id} value={member.id} disabled={shipperIsFull(member) && member.id !== leg.assigned_staff_id}>{shipperOptionLabel(member)}</option>)}</select> : <span className="text-[10px] text-dt-muted">Nhân viên kho xử lý chặng trung chuyển</span>}
+                  {canAssignShipper(leg) ? <select aria-label={`Phân công chặng ${leg.sequence_no}`} value={leg.assigned_staff_id ?? ""} onChange={(event) => onAssign(leg.id, event.target.value)} disabled={saving || leg.status === ShipmentLegStatusCode.COMPLETED || leg.status === ShipmentLegStatusCode.CANCELLED || waitingForGoods} className="h-9 min-w-[210px] rounded-dt border border-dt-border bg-dt-panel px-2 text-[11px] text-dt-text"><option value="">Chọn nhân viên</option>{legStaff.map((member) => <option key={member.id} value={member.id} disabled={shipperIsFull(member) && member.id !== leg.assigned_staff_id}>{shipperOptionLabel(member)}</option>)}</select> : <span className="text-[10px] text-dt-muted">Nhân viên kho xử lý chặng trung chuyển</span>}
                   {canAssignShipper(leg) && legStaff.length === 0 ? <span role="alert" className="w-full text-[10px] text-red-300">Kho này chưa có shipper {legKindText}. Admin cần gán shipper vào kho hoặc đổi loại shipper.</span> : null}
                   {canAssignShipper(leg) && legStaff.length > 0 && legStaffFree.length === 0 ? <span role="alert" className="w-full text-[10px] text-red-300">Tất cả shipper {legKindText} của kho này đã đủ số đơn trong ngày hôm nay. Hãy thử lại vào ngày mai hoặc nhờ Admin tăng giới hạn / thêm shipper.</span> : null}
                   {canAssignShipper(leg) && fullWarning && legStaffFree.length > 0 ? <span role="status" className="w-full text-[10px] text-yellow-300">{fullWarning}</span> : null}
-                  {canAssignShipper(leg) && leg.status === ShipmentLegStatusCode.PENDING && leg.leg_type === ShipmentLegType.LAST_MILE && <span className="text-[10px] text-dt-muted">Chờ hàng nhập kho đích</span>}
+                  {canAssignShipper(leg) && waitingForGoods && <span className="text-[10px] text-dt-muted">Chờ hàng nhập kho đích</span>}
                   {leg.status === ShipmentLegStatusCode.FAILED && <span className="text-[10px] text-red-300">Chặng thất bại lần {leg.attempt_no} · cần xử lý hoặc phân công lại</span>}
                   {currentUser?.roleCode === RoleCode.ADMIN && renderLegAction(leg)}
                 </div>
