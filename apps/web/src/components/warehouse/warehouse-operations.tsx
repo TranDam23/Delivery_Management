@@ -13,7 +13,7 @@ import {
   ScanLine,
   Search,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PackageCondition,
   ShipmentLegStatusCode,
@@ -105,6 +105,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   // Chặng đang chờ quét QR để đối chiếu đơn (bấm "Kiểm hàng"), và các chặng đã quét đúng đơn.
+  const rescanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [outboundGroup, setOutboundGroup] = useState<string | null>(null);
   const [verifyLegId, setVerifyLegId] = useState<string | null>(null);
   const [verifiedLegIds, setVerifiedLegIds] = useState<Set<string>>(new Set());
@@ -223,8 +224,39 @@ export function WarehouseOperationsPage(): React.JSX.Element {
       }
       setVerifiedLegIds((current) => new Set(current).add(verifying.id));
       setExpandedId(verifying.id);
-      setNotice(`Đã đúng đơn hàng ${expected}. Kiểm tra tình trạng kiện rồi bấm "${stateOf(verifying) === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}".`);
+      setNotice(stateOf(verifying) === "OUTBOUND"
+        ? `Đã đúng đơn hàng ${expected}. Bấm "Xuất kho" hoặc quét tiếp các kiện khác của xe này.`
+        : `Đã đúng đơn hàng ${expected}. Kiểm tra tình trạng kiện rồi bấm "${stateOf(verifying) === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}".`);
       return;
+    }
+
+    // Đang xếp hàng lên xe (tab Chờ xuất kho): mỗi lần quét đánh dấu một kiện đã xếp và camera tự mở lại để quét kiện kế tiếp.
+    if (tab === "outbound") {
+      const rescan = (): void => {
+        if (rescanTimer.current) clearTimeout(rescanTimer.current);
+        rescanTimer.current = setTimeout(() => setCameraOpen(true), 900);
+      };
+      const scanned = legs.find((leg) => relationValue(leg.orders)?.tracking_code.toUpperCase() === code && stateOf(leg) === "OUTBOUND");
+      if (scanned) {
+        const info = outboundGroupOf(scanned);
+        if (outboundGroup && info.key !== outboundGroup) {
+          setError(`Đơn ${code} thuộc xe đi ${info.label}, KHÔNG xếp lên xe đi ${outboundGroups.find((group) => group.key === outboundGroup)?.label ?? ""}. Hãy để riêng kiện này.`);
+          rescan();
+          return;
+        }
+        const groupLegs = outboundGroups.find((group) => group.key === info.key)?.legs ?? [];
+        const nextVerified = new Set(verifiedLegIds).add(scanned.id);
+        setOutboundGroup(info.key);
+        setVerifiedLegIds(nextVerified);
+        setNotice(`Đã đúng đơn hàng ${code} · xe đi ${info.label}. Đã quét ${groupLegs.filter((leg) => nextVerified.has(leg.id)).length}/${groupLegs.length} kiện.`);
+        rescan();
+        return;
+      }
+      if (outboundGroup) {
+        setError(`Đơn ${code} không nằm trong danh sách chờ xuất kho của kho này.`);
+        rescan();
+        return;
+      }
     }
     setSearchCode(code);
     setPage(1);
@@ -240,7 +272,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
       changeTab(inbound ? "inbound" : "outbound");
       if (!inbound) setOutboundGroup(outboundGroupOf(target).key);
       setExpandedId(target.id);
-      if (inbound) setVerifiedLegIds((current) => new Set(current).add(target.id));
+      setVerifiedLegIds((current) => new Set(current).add(target.id));
       setNotice(inbound
         ? `Đã quét ${code}: kiểm hàng rồi bấm "${stateOf(target) === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}".`
         : `Đã quét ${code}: bấm xác nhận để xuất kho.`);
@@ -253,9 +285,10 @@ export function WarehouseOperationsPage(): React.JSX.Element {
   }
 
   /** Xuất kho cả xe: ghi nhận xuất kho lần lượt cho mọi kiện trong nhóm đang chọn. */
-  async function recordOutboundBatch(batch: WarehouseOperationLeg[]): Promise<void> {
+  async function recordOutboundBatch(batch: WarehouseOperationLeg[], total: number): Promise<void> {
     if (!warehouse || busyKey || batch.length === 0) return;
-    if (!window.confirm(`Xác nhận đã xếp đủ ${batch.length} kiện lên xe và xuất kho?`)) return;
+    const pending = total - batch.length;
+    if (!window.confirm(`Xuất kho ${batch.length} kiện đã quét lên xe?${pending > 0 ? ` Còn ${pending} kiện chưa quét sẽ ở lại kho.` : ""}`)) return;
     setBusyKey("batch");
     setError(null);
     setNotice(null);
@@ -273,6 +306,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
         failures.push(`${code}: ${caught instanceof Error ? caught.message : "lỗi"}`);
       }
     }
+    setVerifiedLegIds((current) => { const next = new Set(current); batch.forEach((leg) => next.delete(leg.id)); return next; });
     setNotice(`Đã xuất kho ${done}/${batch.length} kiện.`);
     if (failures.length > 0) setError(`Chưa xuất được: ${failures.join("; ")}`);
     setBusyKey(null);
@@ -300,8 +334,8 @@ export function WarehouseOperationsPage(): React.JSX.Element {
     if (!warehouse || busyKey) return;
     const trackingCode = relationValue(leg.orders)?.tracking_code ?? "đơn hàng";
     const isInbound = eventType === WarehouseEventType.INBOUND;
-    if (isInbound && !verifiedLegIds.has(leg.id)) {
-      setError(`Hãy quét QR trên kiện để đối chiếu đúng đơn ${trackingCode} trước khi nhập kho.`);
+    if (!verifiedLegIds.has(leg.id)) {
+      setError(`Hãy quét QR trên kiện để đối chiếu đúng đơn ${trackingCode} trước khi ${isInbound ? "nhập kho" : "xuất kho"}.`);
       return;
     }
     const inspection = inspectionFor(leg.id);
@@ -442,10 +476,10 @@ export function WarehouseOperationsPage(): React.JSX.Element {
           </div>
         ) : null}
 
-        {needsInspection ? (
+        {needsInspection || state === "OUTBOUND" ? (
           verifiedLegIds.has(leg.id)
-            ? <p role="status" className="flex items-center gap-2 rounded-md border border-dt-green/40 bg-dt-green/10 px-3 py-2 text-[12px] text-dt-green"><CheckCircle2 size={14} /> Đã đúng đơn hàng {order?.tracking_code}. Kiểm tra tình trạng kiện rồi xác nhận nhập kho.</p>
-            : <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dt-yellow/40 bg-dt-yellow/5 px-3 py-2 text-[12px] text-dt-yellow"><span>Chưa đối chiếu mã QR. Quét QR trên kiện để xác nhận đúng đơn {order?.tracking_code}.</span><Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => startVerify(leg)}><Camera size={13} /> Quét QR đối chiếu</Button></div>
+            ? <p role="status" className="flex items-center gap-2 rounded-md border border-dt-green/40 bg-dt-green/10 px-3 py-2 text-[12px] text-dt-green"><CheckCircle2 size={14} /> Đã đúng đơn hàng {order?.tracking_code}. {needsInspection ? "Kiểm tra tình trạng kiện rồi xác nhận nhập kho." : "Có thể xác nhận xuất kho."}</p>
+            : <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dt-yellow/40 bg-dt-yellow/5 px-3 py-2 text-[12px] text-dt-yellow"><span>Chưa đối chiếu mã QR. Quét QR trên kiện để xác nhận đúng đơn {order?.tracking_code} trước khi {needsInspection ? "nhập kho" : "xuất kho"}.</span><Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => startVerify(leg)}><Camera size={13} /> Quét QR đối chiếu</Button></div>
         ) : null}
 
         {needsInspection ? renderInspection(leg) : null}
@@ -457,7 +491,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
             </Button>
           ) : null}
           {state === "OUTBOUND" ? (
-            <Button disabled={busy} onClick={() => void recordEvent(leg, WarehouseEventType.OUTBOUND)}>
+            <Button disabled={busy || !verifiedLegIds.has(leg.id)} onClick={() => void recordEvent(leg, WarehouseEventType.OUTBOUND)}>
               <ArrowUpFromLine size={14} /> {busy ? "Đang ghi nhận..." : leg.leg_type === ShipmentLegType.LAST_MILE ? "Xuất kho giao shipper" : "Xác nhận xuất kho"}
             </Button>
           ) : null}
@@ -485,6 +519,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[13px] font-semibold text-dt-yellow">{order?.tracking_code ?? "—"}</span>
+                {verifiedLegIds.has(leg.id) ? <span className="flex items-center gap-1 rounded bg-dt-green/15 px-1.5 text-[10px] text-dt-green"><CheckCircle2 size={11} /> Đã quét</span> : null}
                 {leg.is_return ? <span className="rounded bg-orange-400/15 px-1.5 text-[10px] text-orange-300">Hoàn</span> : null}
                 {leg.attempt_no > 1 ? <span className="text-[10px] text-dt-muted">Lần {leg.attempt_no}</span> : null}
               </span>
@@ -497,9 +532,9 @@ export function WarehouseOperationsPage(): React.JSX.Element {
               ? <span className={`hidden rounded-full px-2 py-0.5 text-[10px] sm:inline ${badge.tone}`}>{badge.label}</span>
               : <span className={`hidden text-[10px] sm:inline ${statusChip(leg.status)}`}>{leg.status === ShipmentLegStatusCode.PENDING || leg.status === ShipmentLegStatusCode.ASSIGNED ? "Chờ hàng về kho" : legStatusLabel(leg.status)}</span>}
             {state === "OUTBOUND" ? (
-              <Button variant="secondary" className="px-3 py-1.5 text-[11px]" disabled={busyKey === leg.id} onClick={() => void recordEvent(leg, WarehouseEventType.OUTBOUND)}>
-                <ArrowUpFromLine size={13} /> Xuất kho
-              </Button>
+              verifiedLegIds.has(leg.id)
+                ? <Button variant="secondary" className="px-3 py-1.5 text-[11px]" disabled={busyKey !== null} onClick={() => void recordEvent(leg, WarehouseEventType.OUTBOUND)}><ArrowUpFromLine size={13} /> Xuất kho</Button>
+                : <Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => startVerify(leg)}><ScanLine size={13} /> Quét QR</Button>
             ) : null}
             {state === "INBOUND" || state === "RETURN_INBOUND" ? (
               <Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => startVerify(leg)}>
@@ -595,10 +630,11 @@ export function WarehouseOperationsPage(): React.JSX.Element {
         ) : null}
         {tab === "outbound" && activeGroup && !searchCode.trim() ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dt-yellow/40 bg-dt-yellow/5 px-4 py-3">
-            <div><p className="text-sm font-semibold text-dt-yellow">{activeGroup.key === LOCAL_GROUP ? activeGroup.label : `Xếp lên xe đi ${activeGroup.label}`}</p><p className="text-[11px] text-dt-muted">{primary.length} kiện cần xếp · {[...activeGroup.details].join(" · ")}</p></div>
+            <div><p className="text-sm font-semibold text-dt-yellow">{activeGroup.key === LOCAL_GROUP ? activeGroup.label : `Xếp lên xe đi ${activeGroup.label}`}</p><p className="text-[11px] text-dt-muted">{primary.length} kiện cần xếp · đã quét {primary.filter((leg) => verifiedLegIds.has(leg.id)).length}/{primary.length} · {[...activeGroup.details].join(" · ")}</p></div>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => setOutboundGroup(null)}>← Chọn tỉnh khác</Button>
-              <Button disabled={busyKey !== null || primary.length === 0} onClick={() => void recordOutboundBatch(primary)}><ArrowUpFromLine size={14} /> {busyKey === "batch" ? "Đang xuất kho..." : `Xuất kho cả xe (${primary.length})`}</Button>
+              <Button variant="secondary" onClick={() => setCameraOpen(true)}><Camera size={14} /> Quét xếp xe</Button>
+              <Button disabled={busyKey !== null || primary.filter((leg) => verifiedLegIds.has(leg.id)).length === 0} onClick={() => void recordOutboundBatch(primary.filter((leg) => verifiedLegIds.has(leg.id)), primary.length)}><ArrowUpFromLine size={14} /> {busyKey === "batch" ? "Đang xuất kho..." : `Xuất kho ${primary.filter((leg) => verifiedLegIds.has(leg.id)).length}/${primary.length} kiện đã quét`}</Button>
             </div>
           </div>
         ) : null}
@@ -621,7 +657,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
           </div>
         ) : null}
       </section>
-      {cameraOpen ? <QrCameraScanner onClose={() => { setCameraOpen(false); setVerifyLegId(null); }} onResult={(code) => void handleScan(code)} /> : null}
+      {cameraOpen ? <QrCameraScanner onClose={() => { if (rescanTimer.current) clearTimeout(rescanTimer.current); setCameraOpen(false); setVerifyLegId(null); }} onResult={(code) => void handleScan(code)} /> : null}
     </div>
   );
 }
