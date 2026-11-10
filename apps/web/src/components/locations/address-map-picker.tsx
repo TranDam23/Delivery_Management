@@ -290,10 +290,12 @@ export function AddressMapPicker({ value, onChange, address }: AddressMapPickerP
     }
     setSearching(true);
     setSearchNote(null);
-    const result = await searchAddressOsm(entries.map((entry) => entry.query));
+    const { result, error } = await searchAddressOsm(entries.map((entry) => entry.query));
     setSearching(false);
     if (!result) {
-      setSearchNote("Không tìm thấy địa chỉ này trên bản đồ (hoặc không kết nối được dịch vụ tìm kiếm). Bạn có thể bấm trực tiếp lên bản đồ để ghim.");
+      setSearchNote(error
+        ? `Không dùng được dịch vụ tìm địa chỉ: ${error}. Bạn vẫn bấm trực tiếp lên bản đồ để ghim.`
+        : "Không tìm thấy địa chỉ này trên bản đồ. Bạn có thể bấm trực tiếp lên bản đồ để ghim.");
       return;
     }
     setSearchNote(entries[result.levelIndex]?.note ?? null);
