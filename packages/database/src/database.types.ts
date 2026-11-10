@@ -1460,6 +1460,8 @@ export type Database = {
       }
       users: {
         Row: {
+          shipper_type: string
+          daily_assignment_limit: number | null
           avatar: string | null
           created_at: string
           email: string
@@ -1475,6 +1477,8 @@ export type Database = {
           warehouse_id: string | null
         }
         Insert: {
+          shipper_type?: string
+          daily_assignment_limit?: number | null
           avatar?: string | null
           created_at?: string
           email: string
@@ -1490,6 +1494,8 @@ export type Database = {
           warehouse_id?: string | null
         }
         Update: {
+          shipper_type?: string
+          daily_assignment_limit?: number | null
           avatar?: string | null
           created_at?: string
           email?: string

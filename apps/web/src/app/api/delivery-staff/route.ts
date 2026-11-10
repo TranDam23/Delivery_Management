@@ -4,6 +4,7 @@ import { getAuthFromRequest } from "@/lib/auth";
 import { fail, ok } from "@/lib/api-response";
 import { getUserOperationalScope } from "@/lib/dispatcher-scope";
 import { normalizeArea } from "@/lib/shipment-routing";
+import { loadShipperCapacities } from "@/lib/shipper-capacity";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 
 /** GET /api/delivery-staff — danh sách nhân viên giao hàng đang hoạt động. */
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
         return normalizeArea(memberWarehouse?.province ?? member.province) === normalizeArea(warehouseScope.province);
       })
     : data ?? [];
+  const capacities = await loadShipperCapacities(visibleStaff.map((member) => member.id));
   return ok(visibleStaff.map((member) => {
     const memberWarehouse = Array.isArray(member.warehouses) ? member.warehouses[0] : member.warehouses;
     return {
@@ -47,6 +49,9 @@ export async function GET(request: NextRequest) {
       phone: member.phone,
       warehouse_id: member.warehouse_id,
       warehouse: memberWarehouse ? { code: memberWarehouse.code, name: memberWarehouse.name } : null,
+      shipper_type: capacities.get(member.id)?.shipperType ?? "BOTH",
+      daily_limit: capacities.get(member.id)?.dailyLimit ?? 20,
+      assigned_today: capacities.get(member.id)?.assignedToday ?? 0,
     };
   }));
 }

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api-client";
+import { fullShipperWarning, shipperIsFull, shipperOptionLabel, shipperTypeAllows, type ShipperLoad } from "@/lib/shipper-ui";
 
 type ExceptionType = "WRONG_WAREHOUSE" | "WRONG_AREA" | "TRANSFER_FAILED" | "REASSIGNED" | "MANUAL_RETURN";
 
@@ -56,7 +57,7 @@ interface RecentRow {
   creator: { full_name: string } | null;
 }
 
-interface StaffOption { id: string; full_name: string; warehouse_id: string | null }
+interface StaffOption extends ShipperLoad { id: string; full_name: string; phone?: string | null; warehouse_id: string | null }
 
 const TYPE_LABEL: Record<ExceptionType, string> = {
   WRONG_WAREHOUSE: "Nhập sai kho",
@@ -231,7 +232,9 @@ export function ShipmentExceptionPage(): React.JSX.Element {
 
   const reassignLeg = action?.kind === "REASSIGNED" ? action.leg : null;
   const reassignWarehouseId = reassignLeg ? (reassignLeg.leg_type === "PICKUP" ? reassignLeg.to_warehouse_id : reassignLeg.from_warehouse_id) : null;
-  const candidates = staff.filter((member) => member.warehouse_id === reassignWarehouseId && member.id !== reassignLeg?.assigned_staff_id);
+  const candidates = staff.filter((member) => member.warehouse_id === reassignWarehouseId && member.id !== reassignLeg?.assigned_staff_id
+    && (!reassignLeg || shipperTypeAllows(member.shipper_type ?? "BOTH", reassignLeg.leg_type)));
+  const candidatesFree = candidates.filter((member) => !shipperIsFull(member));
 
   return (
     <div className="min-h-screen bg-dt-bg text-dt-text">
@@ -320,9 +323,11 @@ export function ShipmentExceptionPage(): React.JSX.Element {
                     Shipper mới (cùng kho vận hành)
                     <select value={staffId} onChange={(event) => setStaffId(event.target.value)} className="h-[38px] rounded-dt border border-dt-border bg-dt-panel2 px-3 text-[12px] text-dt-text">
                       <option value="">— Chọn shipper —</option>
-                      {candidates.map((member) => <option key={member.id} value={member.id}>{member.full_name}</option>)}
+                      {candidates.map((member) => <option key={member.id} value={member.id} disabled={shipperIsFull(member)}>{shipperOptionLabel(member)}</option>)}
                     </select>
-                    {candidates.length === 0 ? <span>Không có shipper khác thuộc kho này.</span> : null}
+                    {candidates.length === 0 ? <span>Không có shipper khác phù hợp thuộc kho này.</span> : null}
+                    {candidates.length > 0 && candidatesFree.length === 0 ? <span className="text-red-300">Tất cả shipper phù hợp của kho này đã đủ số đơn trong ngày hôm nay.</span> : null}
+                    {candidatesFree.length > 0 && fullShipperWarning(candidates) ? <span className="text-yellow-300">{fullShipperWarning(candidates)}</span> : null}
                   </label>
                 ) : null}
                 {needsWarehouse ? <WarehousePicker level={action.kind === "WRONG_AREA" ? "COMMUNE" : undefined} picked={warehouse} onPick={setWarehouse} /> : null}

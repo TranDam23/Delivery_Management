@@ -13,9 +13,10 @@ import { legStatusLabel, legTypeLabel } from "@/lib/shipment-routing";
 import { ProofPhotoInput } from "@/components/delivery/proof-photo-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
+import { fullShipperWarning, shipperIsFull, shipperOptionLabel, shipperTypeAllows, type ShipperLoad } from "@/lib/shipper-ui";
 import { SelectField, TextField } from "@/components/ui/field";
 
-interface StaffOption {
+interface StaffOption extends ShipperLoad {
   id: string;
   full_name: string;
   phone: string | null;
@@ -252,7 +253,8 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
       <div className="mt-4 space-y-4">
         {activeLegs.map((leg) => {
           const actions = statusActions(leg, orderStatus);
-          const staffForLeg = staff.filter((member) => member.warehouse_id === (leg.leg_type === ShipmentLegType.PICKUP ? leg.to_warehouse_id : leg.from_warehouse_id));
+          const staffForLeg = staff.filter((member) => member.warehouse_id === (leg.leg_type === ShipmentLegType.PICKUP ? leg.to_warehouse_id : leg.from_warehouse_id)
+            && (member.id === leg.assigned_staff_id || shipperTypeAllows(member.shipper_type ?? "BOTH", leg.leg_type)));
           const canAssign = leg.status !== ShipmentLegStatusCode.IN_PROGRESS
             && leg.status !== ShipmentLegStatusCode.COMPLETED
             && leg.status !== ShipmentLegStatusCode.CANCELLED;
@@ -263,9 +265,9 @@ export function AdminOrderOperations({ orderId, onChanged }: AdminOrderOperation
                 <span className="text-dt-muted">{legStatusLabel(leg.status)} · Cập nhật {formatDateTime(leg.updated_at)}</span>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                <SelectField label="Nhân viên giao hàng" value={selectedStaff[leg.id] ?? leg.assigned_staff_id ?? ""} onChange={(event) => setSelectedStaff((current) => ({ ...current, [leg.id]: event.target.value }))} disabled={saving === leg.id || !canAssign}>
+                <SelectField label="Nhân viên giao hàng" value={selectedStaff[leg.id] ?? leg.assigned_staff_id ?? ""} onChange={(event) => setSelectedStaff((current) => ({ ...current, [leg.id]: event.target.value }))} disabled={saving === leg.id || !canAssign} hint={fullShipperWarning(staffForLeg.filter((member) => member.id !== leg.assigned_staff_id)) ?? undefined}>
                   <option value="">Chưa phân công</option>
-                  {staffForLeg.map((member) => <option key={member.id} value={member.id}>{member.full_name}{member.phone ? ` · ${member.phone}` : ""}</option>)}
+                  {staffForLeg.map((member) => <option key={member.id} value={member.id} disabled={shipperIsFull(member) && member.id !== leg.assigned_staff_id}>{shipperOptionLabel(member)}</option>)}
                 </SelectField>
                 <Button onClick={() => void assign(leg)} disabled={saving === leg.id || !canAssign || staffForLeg.length === 0}>{saving === leg.id ? "Đang lưu..." : "Phân công"}</Button>
               </div>

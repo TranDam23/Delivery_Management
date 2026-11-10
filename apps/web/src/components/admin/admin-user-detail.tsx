@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { AdminRoleChangeDialog } from "@/components/admin/admin-role-change-dialog";
 import { AdminWarehouseUnassignDialog } from "@/components/admin/admin-warehouse-unassign-dialog";
 import { WarehouseAssignmentPicker } from "@/components/admin/warehouse-assignment-picker";
+import { ShipperProfileCard } from "@/components/admin/shipper-profile-card";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { SelectField, TextField } from "@/components/ui/field";
@@ -263,6 +264,8 @@ export function AdminUserDetailPage({ userId }: { userId: string }): React.JSX.E
               </div>
             </form>
           </Card>
+
+          {user.role === RoleCode.DELIVERY_STAFF ? <ShipperProfileCard userId={userId} /> : null}
 
           <Card className="mt-5">
             <CardLabel>Thông tin hệ thống</CardLabel>
