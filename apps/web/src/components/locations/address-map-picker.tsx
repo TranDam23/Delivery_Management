@@ -37,6 +37,8 @@ interface AddressMapPickerProps {
 
 interface SearchEntry {
   query: string;
+  /** Không có số nhà: chỉ tìm đối tượng khu vực (phường/xã, quận/huyện, tỉnh). */
+  coarse: boolean;
   /** Lời nhắc hiển thị khi kết quả chỉ khớp ở cấp này; rỗng nếu khớp đầy đủ. */
   note: string;
 }
@@ -50,10 +52,10 @@ function buildSearchEntries(address: AddressMapQuery | undefined): SearchEntry[]
   const province = clean(address?.province);
   const join = (...parts: string[]): string => parts.filter(Boolean).join(", ");
   const candidates: SearchEntry[] = [
-    { query: join(line, ward, district, province), note: "Đã ghim theo địa chỉ đã nhập. Hãy kiểm tra và kéo ghim nếu chưa đúng." },
-    { query: join(ward, district, province), note: "Không tìm thấy số nhà, đã ghim theo phường/xã. Hãy kéo ghim đến đúng chỗ." },
-    { query: join(district, province), note: "Chỉ tìm được đến quận/huyện. Hãy kéo ghim đến đúng chỗ." },
-    { query: province, note: "Chỉ tìm được đến tỉnh/thành phố. Hãy bấm hoặc kéo ghim đến đúng chỗ." },
+    { query: join(line, ward, district, province), coarse: false, note: "Đã ghim theo địa chỉ đã nhập. Hãy kiểm tra và kéo ghim nếu chưa đúng." },
+    { query: join(ward, district, province), coarse: true, note: "Không tìm thấy số nhà, đã ghim theo phường/xã. Hãy kéo ghim đến đúng chỗ." },
+    { query: join(district, province), coarse: true, note: "Chỉ tìm được đến quận/huyện. Hãy kéo ghim đến đúng chỗ." },
+    { query: province, coarse: true, note: "Chỉ tìm được đến tỉnh/thành phố. Hãy bấm hoặc kéo ghim đến đúng chỗ." },
   ];
   return candidates.filter((entry, index) => entry.query && candidates.findIndex((other) => other.query === entry.query) === index);
 }
@@ -161,6 +163,26 @@ export function AddressMapPicker({ value, onChange, address }: AddressMapPickerP
 
   onChangeRef.current = onChange;
   valueRef.current = value;
+  const addressRef = useRef(address);
+  addressRef.current = address;
+  const lastAddressKeyRef = useRef<string | null>(null);
+  const searchRef = useRef<() => Promise<void>>(async () => undefined);
+  const addressKey = JSON.stringify([address?.line ?? "", address?.ward ?? "", address?.district ?? "", address?.province ?? ""]);
+
+  // Tự tìm vị trí khi người dùng vừa nhập/đổi địa chỉ (đợi 1,2 giây sau lần gõ cuối); lần hiển thị đầu không tự tìm
+  // để không ghi đè ghim đã lưu của địa chỉ đang sửa.
+  useEffect(() => {
+    if (apiKey) return;
+    const previous = lastAddressKeyRef.current;
+    lastAddressKeyRef.current = addressKey;
+    if (previous === null || previous === addressKey) return;
+    const current = addressRef.current;
+    if (!current?.province || !current.ward || (current.line ?? "").trim().length < 3) return;
+    const timer = setTimeout(() => {
+      if (valueRef.current.latitude === null) void searchRef.current();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [addressKey, apiKey]);
 
   useEffect(() => {
     if (manualCoordinateEditRef.current) {
@@ -290,7 +312,7 @@ export function AddressMapPicker({ value, onChange, address }: AddressMapPickerP
     }
     setSearching(true);
     setSearchNote(null);
-    const { result, error } = await searchAddressOsm(entries.map((entry) => entry.query));
+    const { result, error } = await searchAddressOsm(entries.map((entry) => ({ query: entry.query, coarse: entry.coarse })), address?.province ?? undefined);
     setSearching(false);
     if (!result) {
       setSearchNote(error
@@ -301,6 +323,8 @@ export function AddressMapPicker({ value, onChange, address }: AddressMapPickerP
     setSearchNote(entries[result.levelIndex]?.note ?? null);
     selectOsmPoint(result.latitude, result.longitude, { formattedAddress: result.formattedAddress, placeId: result.placeId });
   }
+
+  searchRef.current = searchOnMap;
 
   /** Chọn vị trí trên bản đồ OpenStreetMap: lưu tọa độ ngay, địa chỉ chữ (Nominatim) bổ sung sau nếu có. */
   function selectOsmPoint(latitude: number, longitude: number, preset?: { formattedAddress: string; placeId: string | null }): void {

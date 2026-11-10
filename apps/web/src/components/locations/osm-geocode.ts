@@ -28,13 +28,16 @@ export interface AddressSearchOutcome {
  * Thử lần lượt các chuỗi từ chi tiết đến tổng quát (số nhà → phường/xã → quận/huyện → tỉnh) và trả về kết quả
  * đầu tiên, vì dữ liệu số nhà ở Việt Nam thường chưa đầy đủ trên OpenStreetMap.
  */
-export async function searchAddressOsm(queries: string[]): Promise<AddressSearchOutcome> {
+export async function searchAddressOsm(queries: Array<{ query: string; coarse: boolean }>, province?: string): Promise<AddressSearchOutcome> {
   let lastError: string | null = null;
   for (let levelIndex = 0; levelIndex < queries.length; levelIndex += 1) {
-    const query = queries[levelIndex]?.trim();
+    const query = queries[levelIndex]?.query.trim();
     if (!query) continue;
     try {
-      const data = await apiFetch<{ result: Omit<AddressSearchResult, "levelIndex"> | null }>(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ q: query });
+      if (province) params.set("province", province);
+      if (queries[levelIndex]?.coarse) params.set("coarse", "1");
+      const data = await apiFetch<{ result: Omit<AddressSearchResult, "levelIndex"> | null }>(`/api/geocode/search?${params.toString()}`);
       lastError = null;
       if (data.result) return { result: { ...data.result, levelIndex }, error: null };
     } catch (caught) {
