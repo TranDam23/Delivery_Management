@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DIMENSIONS_REQUIRED_MESSAGE, dimensionsRequired, WEIGHT_REQUIRED_MESSAGE } from "@/lib/item-types";
 import { shippingFeePayerSchema, shippingPaymentMethodSchema } from "@/lib/shipping-payment";
 
 export const guestEmailSchema = z.string().trim().toLowerCase().email().max(254);
@@ -26,13 +27,17 @@ export const guestOrderSchema = z.object({
     name: z.string().trim().min(1).max(200),
     type: z.string().trim().max(100),
     quantity: z.number().int().positive().max(10000),
-    weight: z.number().finite().positive().max(10000).nullable(),
+    weight: z.number({ required_error: WEIGHT_REQUIRED_MESSAGE, invalid_type_error: WEIGHT_REQUIRED_MESSAGE }).finite().positive(WEIGHT_REQUIRED_MESSAGE).max(10000),
     // Kích thước kiện (cm). Form cũ chưa gửi các trường này nên để tùy chọn.
     length: z.number().finite().positive().max(1000).nullable().optional(),
     width: z.number().finite().positive().max(1000).nullable().optional(),
     height: z.number().finite().positive().max(1000).nullable().optional(),
     declaredValue: z.number().finite().nonnegative().max(1000000000).nullable(),
     note: z.string().trim().max(1000),
+  }).superRefine((item, context) => {
+    if (dimensionsRequired(item.type) && (!item.length || !item.width || !item.height)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["length"], message: DIMENSIONS_REQUIRED_MESSAGE });
+    }
   }),
 });
 

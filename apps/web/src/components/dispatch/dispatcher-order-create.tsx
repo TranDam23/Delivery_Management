@@ -7,6 +7,7 @@ import { AddressLocationFields } from "@/components/locations/address-location-f
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { PageHeader } from "@/components/layout/page-header";
 import { ItemTypeField } from "@/components/orders/item-type-field";
+import { DIMENSIONS_REQUIRED_MESSAGE, dimensionsRequired, WEIGHT_REQUIRED_MESSAGE } from "@/lib/item-types";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
@@ -75,9 +76,11 @@ export function DispatcherOrderCreatePage({ ordersPath }: { ordersPath: string }
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   const num = (value: string): number | undefined => (Number(value) > 0 ? Number(value) : undefined);
+  const needsDimensions = dimensionsRequired(itemType);
+  const feeInputsReady = Boolean(num(weight)) && (!needsDimensions || Boolean(num(length) && num(width) && num(height)));
   const { quote } = useShippingQuote({
     service: serviceType as "standard" | "express" | "same_day",
-    pickupProvince: sender.province,
+    pickupProvince: feeInputsReady ? sender.province : "",
     deliveryProvince: receiver.province,
     pickupWard: sender.ward,
     deliveryWard: receiver.ward,
@@ -91,6 +94,8 @@ export function DispatcherOrderCreatePage({ ordersPath }: { ordersPath: string }
       }
     }
     if (!itemName.trim()) return "Vui lòng nhập tên hàng hóa.";
+    if (!num(weight)) return WEIGHT_REQUIRED_MESSAGE;
+    if (needsDimensions && !(num(length) && num(width) && num(height))) return DIMENSIONS_REQUIRED_MESSAGE;
     if (quote && !quote.available) return quote.message ?? "Dịch vụ không áp dụng cho tuyến này.";
     return null;
   }
@@ -174,10 +179,10 @@ export function DispatcherOrderCreatePage({ ordersPath }: { ordersPath: string }
                 <TextField label="Tên hàng hóa" required value={itemName} onChange={(event) => setItemName(event.target.value)} />
                 <ItemTypeField key={idempotencyKey} value={itemType} onChange={setItemType} />
                 <TextField label="Số lượng" type="number" min="1" required value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-                <TextField label="Khối lượng (kg)" type="number" min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(event.target.value)} />
-                <TextField label="Dài (cm)" type="number" min="0.1" max="1000" step="0.1" value={length} onChange={(event) => setLength(event.target.value)} />
-                <TextField label="Rộng (cm)" type="number" min="0.1" max="1000" step="0.1" value={width} onChange={(event) => setWidth(event.target.value)} />
-                <TextField label="Cao (cm)" type="number" min="0.1" max="1000" step="0.1" value={height} onChange={(event) => setHeight(event.target.value)} />
+                <TextField label="Khối lượng (kg)" type="number" min="0.01" step="0.01" required value={weight} onChange={(event) => setWeight(event.target.value)} />
+                <TextField label="Dài (cm)" type="number" min="0.1" max="1000" step="0.1" required={needsDimensions} value={length} onChange={(event) => setLength(event.target.value)} />
+                <TextField label="Rộng (cm)" type="number" min="0.1" max="1000" step="0.1" required={needsDimensions} value={width} onChange={(event) => setWidth(event.target.value)} />
+                <TextField label="Cao (cm)" type="number" min="0.1" max="1000" step="0.1" required={needsDimensions} value={height} onChange={(event) => setHeight(event.target.value)} />
                 <TextField label="Giá trị khai báo (đ)" type="number" min="0" value={declaredValue} onChange={(event) => setDeclaredValue(event.target.value)} />
                 <TextField label="COD cần thu hộ (đ)" type="number" min="0" value={codAmount} onChange={(event) => setCodAmount(event.target.value)} />
               </div>
@@ -186,7 +191,7 @@ export function DispatcherOrderCreatePage({ ordersPath }: { ordersPath: string }
                 <option value="express">Hỏa tốc</option>
                 <option value="same_day">Trong ngày (chỉ nội tỉnh)</option>
               </SelectField>
-              <ShippingPaymentFields payer={payer} method={method} onPayerChange={setPayer} onMethodChange={setMethod} fee={quote?.fee ?? null} feeDetail={describeQuote(quote)} feeNote={quote && !quote.available ? quote.message : null} />
+              <ShippingPaymentFields payer={payer} method={method} onPayerChange={setPayer} onMethodChange={setMethod} fee={quote?.fee ?? null} feeHint={feeInputsReady ? undefined : "nhập khối lượng và kích thước hàng hóa để tính"} feeDetail={describeQuote(quote)} feeNote={quote && !quote.available ? quote.message : null} />
               <TextField label="Ghi chú giao hàng" value={note} onChange={(event) => setNote(event.target.value)} />
             </Card>
             {error ? <p role="alert" className="rounded-dt border border-dt-red/40 bg-dt-red/10 px-4 py-3 text-[12px] text-red-200">{error}</p> : null}

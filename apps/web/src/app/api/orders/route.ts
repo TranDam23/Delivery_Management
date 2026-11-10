@@ -22,6 +22,7 @@ import { isQrPaymentMethod, shippingFeePayerSchema, shippingPaymentMethodSchema 
 import { calculateShippingFee, isServiceAvailable } from "@/lib/shipping-fee";
 import { zoneForProvinces } from "@/lib/shipping-zone";
 import { loadPricingConfig } from "@/lib/shipping-pricing";
+import { DIMENSIONS_REQUIRED_MESSAGE, dimensionsRequired, WEIGHT_REQUIRED_MESSAGE } from "@/lib/item-types";
 import { getVisibleOrderIds } from "@/lib/order-access";
 import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatcher-scope";
 
@@ -43,9 +44,8 @@ const createOrderSchema = z.object({
         item_name: z.string().trim().min(1).max(200),
         item_type: z.string().trim().max(100).optional().transform((value) => value || undefined),
         quantity: z.number().int().positive().max(10000).default(1),
-        weight: z.number().finite().positive().max(10000)
-          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Khối lượng tối đa hai chữ số thập phân")
-          .optional(),
+        weight: z.number({ required_error: WEIGHT_REQUIRED_MESSAGE, invalid_type_error: WEIGHT_REQUIRED_MESSAGE }).finite().positive(WEIGHT_REQUIRED_MESSAGE).max(10000)
+          .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Khối lượng tối đa hai chữ số thập phân"),
         length: z.number().finite().positive().max(1000)
           .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Kích thước tối đa hai chữ số thập phân")
           .optional(),
@@ -59,6 +59,10 @@ const createOrderSchema = z.object({
           .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, "Giá trị khai báo tối đa hai chữ số thập phân")
           .optional(),
         note: z.string().trim().max(1000).optional().transform((value) => value || undefined),
+      }).superRefine((item, context) => {
+        if (dimensionsRequired(item.item_type) && (!item.length || !item.width || !item.height)) {
+          context.addIssue({ code: z.ZodIssueCode.custom, path: ["length"], message: DIMENSIONS_REQUIRED_MESSAGE });
+        }
       }),
     )
     .min(1),
