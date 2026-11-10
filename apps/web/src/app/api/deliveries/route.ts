@@ -7,6 +7,7 @@ import { getAuthFromRequest } from "@/lib/auth";
 import { ok, fail } from "@/lib/api-response";
 import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatcher-scope";
 import { checkLegAssignable } from "@/lib/shipment-leg-rules";
+import { checkShipperCanTake, friendlyCapacityError } from "@/lib/shipper-capacity";
 
 const assignSchema = z.object({
   order_id: z.string().uuid(),
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
   if (!operationalWarehouseId) return fail("Chặng chưa được gắn kho vận hành", 400);
   const { data: staff, error: staffError } = await supabase
     .from("users")
-    .select("id, role_id, status, province, warehouse_id")
+    .select("id, full_name, role_id, status, province, warehouse_id")
     .eq("id", parsed.data.delivery_staff_id)
     .maybeSingle();
   if (staffError) return assignmentDatabaseFailure("delivery staff");
@@ -88,6 +89,9 @@ export async function POST(request: NextRequest) {
     return fail("Nhân viên giao hàng phải thuộc đúng kho vận hành của chặng", 400);
   }
 
+  const shipperCheck = await checkShipperCanTake(staff.id, staff.full_name, { leg_type: leg.leg_type, assigned_staff_id: leg.assigned_staff_id });
+  if (!shipperCheck.ok) return fail(shipperCheck.error, shipperCheck.status);
+
   const { data: delivery, error } = await supabase.rpc("assign_delivery_atomic", {
     p_order_id: parsed.data.order_id,
     p_shipment_leg_id: leg.id,
@@ -109,7 +113,7 @@ export async function POST(request: NextRequest) {
       FAILED_DELIVERY_NOT_FOUND: "Không tìm thấy bản ghi giao hàng của chặng thất bại",
       LEG_CHANGED: "Chặng đã được cập nhật bởi yêu cầu khác; hãy tải lại trước khi phân công",
     };
-    const message = conflictMessages[error.message];
+    const message = conflictMessages[error.message] ?? friendlyCapacityError(error.message);
     if (message) return fail(message, 409);
     if (error.message === "LEG_NOT_FOUND") return fail("Chặng vận chuyển không tồn tại hoặc không thuộc đơn hàng", 404);
     if (error.message === "STAFF_NOT_FOUND" || error.message === "STAFF_INACTIVE") return fail("Nhân viên không tồn tại hoặc không hoạt động", 404);
