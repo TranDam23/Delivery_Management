@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Camera,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -89,6 +90,9 @@ export function WarehouseOperationsPage(): React.JSX.Element {
   const [searchCode, setSearchCode] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // Chặng đang chờ quét QR để đối chiếu đơn (bấm "Kiểm hàng"), và các chặng đã quét đúng đơn.
+  const [verifyLegId, setVerifyLegId] = useState<string | null>(null);
+  const [verifiedLegIds, setVerifiedLegIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +169,9 @@ export function WarehouseOperationsPage(): React.JSX.Element {
    * Việc ghi nhận (thời gian, kho, người thực hiện) vẫn do nhân viên bấm xác nhận sau khi kiểm hàng.
    */
   async function handleScan(raw: string): Promise<void> {
+    const verifying = verifyLegId ? legs.find((leg) => leg.id === verifyLegId) ?? null : null;
     setCameraOpen(false);
+    setVerifyLegId(null);
     setError(null);
     setNotice(null);
     let code: string;
@@ -173,6 +179,18 @@ export function WarehouseOperationsPage(): React.JSX.Element {
       code = await resolveTrackingCode(raw);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không đọc được mã QR.");
+      return;
+    }
+    // Đối chiếu với đơn của nút "Kiểm hàng" vừa bấm: đúng thì đánh dấu đã đúng đơn, sai thì báo lỗi và không cho nhập kho.
+    if (verifying) {
+      const expected = relationValue(verifying.orders)?.tracking_code.toUpperCase() ?? "";
+      if (code !== expected) {
+        setError(`Mã quét ${code} KHÔNG khớp với đơn ${expected}. Hãy kiểm tra lại kiện hàng, không nhập kho nhầm đơn.`);
+        return;
+      }
+      setVerifiedLegIds((current) => new Set(current).add(verifying.id));
+      setExpandedId(verifying.id);
+      setNotice(`Đã đúng đơn hàng ${expected}. Kiểm tra tình trạng kiện rồi bấm "${stateOf(verifying) === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}".`);
       return;
     }
     setSearchCode(code);
@@ -188,6 +206,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
     if (target) {
       changeTab(inbound ? "inbound" : "outbound");
       setExpandedId(target.id);
+      if (inbound) setVerifiedLegIds((current) => new Set(current).add(target.id));
       setNotice(inbound
         ? `Đã quét ${code}: kiểm hàng rồi bấm "${stateOf(target) === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}".`
         : `Đã quét ${code}: bấm xác nhận để xuất kho.`);
@@ -197,6 +216,15 @@ export function WarehouseOperationsPage(): React.JSX.Element {
     setExpandedId(forOrder[0]!.id);
     const state = stateOf(forOrder[0]!);
     setNotice(`Đã quét ${code}: ${state === "INCOMING" ? "hàng chưa tới kho, chưa nhập được" : state === "HOLDING" ? "hàng đang giữ tại kho, chờ điều phối phân công shipper" : "chưa có thao tác nhập/xuất cần làm tại kho này"}.`);
+  }
+
+  /** Nút "Kiểm hàng": mở camera quét QR trên kiện để đối chiếu với đơn của dòng này. */
+  function startVerify(leg: WarehouseOperationLeg): void {
+    setError(null);
+    setNotice(null);
+    setExpandedId(leg.id);
+    setVerifyLegId(leg.id);
+    setCameraOpen(true);
   }
 
   function inspectionFor(legId: string): InspectionDraft {
@@ -211,6 +239,10 @@ export function WarehouseOperationsPage(): React.JSX.Element {
     if (!warehouse || busyKey) return;
     const trackingCode = relationValue(leg.orders)?.tracking_code ?? "đơn hàng";
     const isInbound = eventType === WarehouseEventType.INBOUND;
+    if (isInbound && !verifiedLegIds.has(leg.id)) {
+      setError(`Hãy quét QR trên kiện để đối chiếu đúng đơn ${trackingCode} trước khi nhập kho.`);
+      return;
+    }
     const inspection = inspectionFor(leg.id);
     const weightText = inspection.weight.trim().replace(",", ".");
     const weight = weightText ? Number(weightText) : undefined;
@@ -245,6 +277,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
         : result.returnRouteError ? ` Chưa lập được tuyến hoàn: ${result.returnRouteError}` : "";
       setNotice(`${action} ${trackingCode}.${returnNote}`);
       setExpandedId(null);
+      setVerifiedLegIds((current) => { const next = new Set(current); next.delete(leg.id); return next; });
       setInspectionByLeg((current) => {
         const next = { ...current };
         delete next[leg.id];
@@ -348,11 +381,17 @@ export function WarehouseOperationsPage(): React.JSX.Element {
           </div>
         ) : null}
 
+        {needsInspection ? (
+          verifiedLegIds.has(leg.id)
+            ? <p role="status" className="flex items-center gap-2 rounded-md border border-dt-green/40 bg-dt-green/10 px-3 py-2 text-[12px] text-dt-green"><CheckCircle2 size={14} /> Đã đúng đơn hàng {order?.tracking_code}. Kiểm tra tình trạng kiện rồi xác nhận nhập kho.</p>
+            : <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dt-yellow/40 bg-dt-yellow/5 px-3 py-2 text-[12px] text-dt-yellow"><span>Chưa đối chiếu mã QR. Quét QR trên kiện để xác nhận đúng đơn {order?.tracking_code}.</span><Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => startVerify(leg)}><Camera size={13} /> Quét QR đối chiếu</Button></div>
+        ) : null}
+
         {needsInspection ? renderInspection(leg) : null}
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           {needsInspection ? (
-            <Button disabled={busy} onClick={() => void recordEvent(leg, WarehouseEventType.INBOUND)}>
+            <Button disabled={busy || !verifiedLegIds.has(leg.id)} onClick={() => void recordEvent(leg, WarehouseEventType.INBOUND)}>
               <ArrowDownToLine size={14} /> {busy ? "Đang ghi nhận..." : state === "RETURN_INBOUND" ? "Nhận lại hàng" : "Xác nhận nhập kho"}
             </Button>
           ) : null}
@@ -402,7 +441,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
               </Button>
             ) : null}
             {state === "INBOUND" || state === "RETURN_INBOUND" ? (
-              <Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => setExpandedId(leg.id)}>
+              <Button variant="secondary" className="px-3 py-1.5 text-[11px]" onClick={() => startVerify(leg)}>
                 <ScanLine size={13} /> Kiểm hàng
               </Button>
             ) : null}
@@ -497,7 +536,7 @@ export function WarehouseOperationsPage(): React.JSX.Element {
           </div>
         ) : null}
       </section>
-      {cameraOpen ? <QrCameraScanner onClose={() => setCameraOpen(false)} onResult={(code) => void handleScan(code)} /> : null}
+      {cameraOpen ? <QrCameraScanner onClose={() => { setCameraOpen(false); setVerifyLegId(null); }} onResult={(code) => void handleScan(code)} /> : null}
     </div>
   );
 }
