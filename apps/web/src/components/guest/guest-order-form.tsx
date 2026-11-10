@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
+import { ItemTypeField } from "@/components/orders/item-type-field";
 import { SelectField, TextField } from "@/components/ui/field";
 import { guestPost } from "./guest-api";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
@@ -101,7 +102,7 @@ export function GuestOrderForm(): React.JSX.Element {
       <h2 className="text-base font-semibold">Hàng hóa và dịch vụ</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Tên hàng hóa" required value={name} onChange={(event) => setName(event.target.value)} />
-        <TextField label="Loại hàng" value={type} onChange={(event) => setType(event.target.value)} />
+        <ItemTypeField value={type} onChange={setType} />
         <TextField label="Số lượng" type="number" min="1" required value={quantity} onChange={(event) => setQuantity(event.target.value)} />
         <TextField label="Khối lượng (kg)" type="number" min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(event.target.value)} />
         <TextField label="Dài (cm)" type="number" min="0.1" max="1000" step="0.1" value={length} onChange={(event) => setLength(event.target.value)} />

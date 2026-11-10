@@ -21,6 +21,7 @@ import { AddressLocationFields } from "@/components/locations/address-location-f
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { ItemTypeField } from "@/components/orders/item-type-field";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { usePaymentAvailability } from "@/lib/use-payment-availability";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
@@ -744,9 +745,9 @@ export function NewOrderPage(): React.JSX.Element {
 
           <Card>
             <CardLabel>Hàng hóa</CardLabel>
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+            <div className="grid gap-4 md:grid-cols-2">
               <TextField label="Tên hàng hóa" required value={form.itemName} maxLength={200} placeholder="Ví dụ: Hồ sơ hợp đồng" onChange={(event) => update("itemName", event.target.value)} />
-              <TextField label="Loại hàng" value={form.itemType} maxLength={100} placeholder="Hồ sơ, quần áo..." onChange={(event) => update("itemType", event.target.value)} />
+              <ItemTypeField value={form.itemType} onChange={(next) => update("itemType", next)} />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <TextField label="Số lượng" type="number" min="1" max="10000" step="1" required value={form.quantity} onChange={(event) => update("quantity", event.target.value)} />
