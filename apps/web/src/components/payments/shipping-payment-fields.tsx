@@ -14,11 +14,13 @@ interface Props {
   feeNote?: string | null;
   /** Diễn giải cách tính cước (cước cơ bản, cân nặng, kích thước, khu vực). */
   feeDetail?: string | null;
+  /** Lý do chưa tính được cước (thiếu khối lượng/kích thước); hiện thay cho gợi ý chọn địa chỉ. */
+  feeHint?: string | null;
   /** Phương thức QR đang có tài khoản nhận tiền; bỏ trống = chỉ tiền mặt (khách vãng lai). */
   availability?: PaymentMethodAvailability;
 }
 
-export function ShippingPaymentFields({ payer, method, onPayerChange, onMethodChange, fee, feeNote, feeDetail, availability }: Props): React.JSX.Element {
+export function ShippingPaymentFields({ payer, method, onPayerChange, onMethodChange, fee, feeNote, feeDetail, feeHint, availability }: Props): React.JSX.Element {
   return <div className="space-y-3">
     <p className="text-xs font-semibold">Thanh toán phí vận chuyển</p>
     <SelectField label="Người trả phí" required value={payer} onChange={(event) => onPayerChange(event.target.value as ShippingFeePayer)}>
@@ -31,7 +33,7 @@ export function ShippingPaymentFields({ payer, method, onPayerChange, onMethodCh
       <option value="momo" disabled={!availability?.momo}>MoMo{availability?.momo ? " — ví MoMo" : " — chưa cấu hình ví nhận tiền"}</option>
     </SelectField>
     <div className="rounded-md border border-dt-yellow/25 bg-dt-yellow/5 p-3 text-xs text-dt-muted">
-      <p>Phí vận chuyển dự kiến: {fee === null ? <strong className="text-dt-yellow">{feeNote ? "không áp dụng cho tuyến này" : "chọn địa chỉ gửi và nhận để tính"}</strong> : <strong className="text-dt-yellow">{fee.toLocaleString("vi-VN")}đ</strong>} · {payer === "sender" ? "thu khi lấy hàng" : "thu khi giao hàng"}.</p>
+      <p>Phí vận chuyển dự kiến: {fee === null ? <strong className="text-dt-yellow">{feeNote ? "không áp dụng cho tuyến này" : feeHint ?? "chọn địa chỉ gửi và nhận để tính"}</strong> : <strong className="text-dt-yellow">{fee.toLocaleString("vi-VN")}đ</strong>} · {payer === "sender" ? "thu khi lấy hàng" : "thu khi giao hàng"}.</p>
       {feeDetail ? <p className="mt-1">{feeDetail}</p> : null}
       <p className="mt-1">Tiền COD (nếu có) do người nhận trả riêng khi giao. Chọn phương thức không có nghĩa là đã thanh toán{method === "cash" ? "" : " — sau khi tạo đơn, quét mã QR ở trang chi tiết đơn để chuyển khoản"}.</p>
       {feeNote ? <p className="mt-1 text-dt-red">{feeNote}</p> : null}

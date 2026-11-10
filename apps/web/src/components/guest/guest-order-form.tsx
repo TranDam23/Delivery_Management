@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
 import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
+import { ItemTypeField } from "@/components/orders/item-type-field";
+import { DIMENSIONS_REQUIRED_MESSAGE, dimensionsRequired, WEIGHT_REQUIRED_MESSAGE } from "@/lib/item-types";
 import { SelectField, TextField } from "@/components/ui/field";
 import { guestPost } from "./guest-api";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
@@ -53,9 +55,11 @@ export function GuestOrderForm(): React.JSX.Element {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [trackingCode, setTrackingCode] = useState("");
+  const needsDimensions = dimensionsRequired(type);
+  const feeInputsReady = Number(weight) > 0 && (!needsDimensions || (Number(length) > 0 && Number(width) > 0 && Number(height) > 0));
   const { quote } = useShippingQuote({
     service: serviceType as "standard" | "express" | "same_day",
-    pickupProvince: sender.province,
+    pickupProvince: feeInputsReady ? sender.province : "",
     deliveryProvince: receiver.province,
     pickupWard: sender.ward,
     deliveryWard: receiver.ward,
@@ -76,6 +80,8 @@ export function GuestOrderForm(): React.JSX.Element {
     if (!sender.province || !sender.ward || !receiver.province || !receiver.ward) {
       setError("Vui lòng chọn đầy đủ tỉnh/thành phố và xã/phường cho cả hai địa chỉ."); return;
     }
+    if (!(Number(weight) > 0)) { setError(WEIGHT_REQUIRED_MESSAGE); return; }
+    if (needsDimensions && !(Number(length) > 0 && Number(width) > 0 && Number(height) > 0)) { setError(DIMENSIONS_REQUIRED_MESSAGE); return; }
     setBusy(true);
     try {
       const result = await guestPost<{ trackingCode: string; routeStatus: string }>("/api/guest/orders", {
@@ -107,19 +113,19 @@ export function GuestOrderForm(): React.JSX.Element {
       <h2 className="text-base font-semibold">Hàng hóa và dịch vụ</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Tên hàng hóa" required value={name} onChange={(event) => setName(event.target.value)} />
-        <TextField label="Loại hàng" value={type} onChange={(event) => setType(event.target.value)} />
+        <ItemTypeField value={type} onChange={setType} />
         <TextField label="Số lượng" type="number" min="1" required value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-        <TextField label="Khối lượng (kg)" type="number" min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(event.target.value)} />
-        <TextField label="Dài (cm)" type="number" min="0.1" max="1000" step="0.1" value={length} onChange={(event) => setLength(event.target.value)} />
-        <TextField label="Rộng (cm)" type="number" min="0.1" max="1000" step="0.1" value={width} onChange={(event) => setWidth(event.target.value)} />
-        <TextField label="Cao (cm)" type="number" min="0.1" max="1000" step="0.1" value={height} onChange={(event) => setHeight(event.target.value)} />
+        <TextField label="Khối lượng (kg)" type="number" min="0.01" step="0.01" required value={weight} onChange={(event) => setWeight(event.target.value)} />
+        <TextField label="Dài (cm)" type="number" min="0.1" max="1000" step="0.1" required={needsDimensions} value={length} onChange={(event) => setLength(event.target.value)} />
+        <TextField label="Rộng (cm)" type="number" min="0.1" max="1000" step="0.1" required={needsDimensions} value={width} onChange={(event) => setWidth(event.target.value)} />
+        <TextField label="Cao (cm)" type="number" min="0.1" max="1000" step="0.1" required={needsDimensions} value={height} onChange={(event) => setHeight(event.target.value)} />
         <TextField label="Giá trị khai báo (đ)" type="number" min="0" value={declaredValue} onChange={(event) => setDeclaredValue(event.target.value)} />
         <TextField label="COD cần thu hộ (đ)" type="number" min="0" required value={codAmount} onChange={(event) => setCodAmount(event.target.value)} />
       </div>
       <SelectField label="Dịch vụ" required value={serviceType} onChange={(event) => setServiceType(event.target.value)}>
         <option value="standard">Tiêu chuẩn</option><option value="express">Hỏa tốc</option><option value="same_day">Trong ngày (chỉ nội tỉnh)</option>
       </SelectField>
-      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={quote?.fee ?? null} feeDetail={describeQuote(quote)} feeNote={quote && !quote.available ? quote.message : null} />
+      <ShippingPaymentFields payer={shippingFeePayer} method={shippingPaymentMethod} onPayerChange={setShippingFeePayer} onMethodChange={setShippingPaymentMethod} fee={quote?.fee ?? null} feeHint={feeInputsReady ? undefined : "nhập khối lượng và kích thước hàng hóa để tính"} feeDetail={describeQuote(quote)} feeNote={quote && !quote.available ? quote.message : null} />
       <TextField label="Ghi chú giao hàng" value={note} onChange={(event) => setNote(event.target.value)} />
     </section>
     <section className="space-y-4 rounded-dt border border-dt-border bg-dt-panel p-5">
