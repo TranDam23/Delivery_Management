@@ -10,6 +10,12 @@ const addressSchema = z.object({
   province: z.string().trim().min(2).max(100),
   district: z.string().trim().max(100),
   ward: z.string().trim().min(2).max(100),
+  // Vị trí ghim trên bản đồ (tùy chọn): form cũ chưa gửi các trường này.
+  latitude: z.number().finite().min(-90).max(90).nullable().optional(),
+  longitude: z.number().finite().min(-180).max(180).nullable().optional(),
+  place_id: z.string().max(300).nullable().optional(),
+  formatted_address: z.string().max(500).nullable().optional(),
+  location_source: z.enum(["MAP_PIN", "PLACES", "GEOCODED", "DEVICE_GPS"]).nullable().optional(),
 });
 export const guestOrderSchema = z.object({
   email: guestEmailSchema,

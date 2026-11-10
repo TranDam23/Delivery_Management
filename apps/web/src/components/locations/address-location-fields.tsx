@@ -82,9 +82,14 @@ export function AddressLocationFields({
 
   const hasDistrictOptions = districts.length > 0;
   const hasWardOptions = wards.length > 0;
+  // Địa chỉ 2 cấp (tỉnh → xã/phường): không có quận/huyện thì ẩn hẳn ô này và chia lại cột.
+  const showDistrict = hasDistrictOptions || Boolean(value.district);
+  const gridClass = wrapperClassName
+    ? (showDistrict ? wrapperClassName : wrapperClassName.replace("grid-cols-3", "grid-cols-2"))
+    : (showDistrict ? "grid gap-3 md:grid-cols-3" : "grid gap-3 md:grid-cols-2");
 
   return (
-    <div className={wrapperClassName ?? "grid gap-3 md:grid-cols-3"}>
+    <div className={gridClass}>
       <SelectField
         label="Tỉnh/Thành phố"
         required={required}
@@ -99,19 +104,18 @@ export function AddressLocationFields({
         ))}
       </SelectField>
 
-      <SelectField
+      {showDistrict ? <SelectField
         label="Quận/Huyện"
         required={districtRequired}
         value={value.district}
-        disabled={disabled || !value.province || (!hasDistrictOptions && !value.district)}
+        disabled={disabled || !value.province}
         onChange={(event) => onChange({ province: value.province, district: event.target.value, ward: "" })}
-        hint={!loadError && value.province && !hasDistrictOptions ? "Chưa có quận/huyện trong dữ liệu; có thể để trống theo địa chỉ 2 cấp." : undefined}
       >
         <option value="" className="bg-dt-panel2">{value.province ? "Chọn quận/huyện" : "Chọn tỉnh trước"}</option>
         {districts.map((district) => (
           <option key={district} value={district} className="bg-dt-panel2">{district}</option>
         ))}
-      </SelectField>
+      </SelectField> : null}
 
       <SelectField
         label="Xã/Phường"
