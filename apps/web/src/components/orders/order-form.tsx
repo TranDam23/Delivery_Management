@@ -22,6 +22,7 @@ import { AddressMapPicker, type AddressMapValue } from "@/components/locations/a
 import { ContactAddressSelector } from "@/components/contacts/contact-address-selector";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { ItemTypeField } from "@/components/orders/item-type-field";
+import { Modal } from "@/components/ui/modal";
 import { DIMENSIONS_REQUIRED_MESSAGE, dimensionsRequired, WEIGHT_REQUIRED_MESSAGE } from "@/lib/item-types";
 import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fields";
 import { usePaymentAvailability } from "@/lib/use-payment-availability";
@@ -215,6 +216,29 @@ function validateRoutingAddress(address: Address | null | undefined, label: stri
     return `Vui lòng bổ sung ${missing.join(", ")} cho địa chỉ ${label} để hệ thống phân tuyến qua kho.`;
   }
   return null;
+}
+
+/** Thẻ tóm tắt người gửi/nhận đã nhập trực tiếp; bấm nút để mở hộp thoại nhập/sửa. */
+function ManualContactSummary({ roleLabel, value, onEdit }: { roleLabel: string; value: ManualContactForm; onEdit: () => void }): React.JSX.Element {
+  const filled = validateManualContact(value, roleLabel) === null;
+  const addressText = [value.addressLine, value.ward, value.district, value.province].filter((part) => part.trim()).join(", ");
+  return (
+    <div className="space-y-3 rounded-md border border-dt-yellow/25 bg-dt-yellow/5 p-3">
+      {filled ? (
+        <div className="text-[12px]">
+          <p className="text-[13px] font-medium">{value.name} · {value.phone}</p>
+          {value.email ? <p className="text-dt-muted">{value.email}</p> : null}
+          <p className="mt-1 leading-5 text-dt-muted">{addressText}</p>
+          {value.latitude !== null && value.longitude !== null ? <p className="mt-1 text-[10px] text-dt-green">Đã ghim vị trí trên bản đồ</p> : null}
+        </div>
+      ) : (
+        <p className="text-[12px] text-dt-muted">Chưa nhập thông tin {roleLabel}.</p>
+      )}
+      <button type="button" onClick={onEdit} className="inline-flex items-center rounded-dt border border-dt-yellow px-3 py-1.5 text-[12px] font-medium text-dt-yellow hover:bg-dt-yellow/10">
+        {filled ? "Sửa thông tin" : `Nhập thông tin ${roleLabel}`}
+      </button>
+    </div>
+  );
 }
 
 interface ManualContactFieldsProps {
@@ -411,6 +435,50 @@ export function NewOrderPage(): React.JSX.Element {
     items: [{ weight, length: numericValue(form.length) || undefined, width: numericValue(form.width) || undefined, height: numericValue(form.height) || undefined, quantity: numericValue(form.quantity) || 1 }],
   });
   const estimatedFee = quote?.fee ?? null;
+
+  const [manualDialog, setManualDialog] = useState<{ role: "sender" | "receiver"; draft: ManualContactForm; error: string | null; viaToggle: boolean } | null>(null);
+
+  function openManualDialog(role: "sender" | "receiver", draft: ManualContactForm, viaToggle = false): void {
+    setManualDialog({ role, draft, error: null, viaToggle });
+  }
+
+  /** Nút "Nhập trực tiếp" / "Chọn từ sổ địa chỉ": vào chế độ nhập trực tiếp thì mở hộp thoại nhập. */
+  function toggleManual(role: "sender" | "receiver"): void {
+    const source = role === "sender" ? senderSource : receiverSource;
+    if (source === "manual") {
+      (role === "sender" ? setSenderSource : setReceiverSource)("addressBook");
+      return;
+    }
+    const contact = role === "sender" ? selectedSender : selectedReceiver;
+    const address = role === "sender" ? senderAddress : receiverAddress;
+    const base = contact ? manualContactFromContact(contact, address) : (role === "sender" ? manualSender : manualReceiver);
+    (role === "sender" ? setManualSender : setManualReceiver)(base);
+    (role === "sender" ? setSenderSource : setReceiverSource)("manual");
+    openManualDialog(role, base, true);
+  }
+
+  function saveManualDialog(): void {
+    if (!manualDialog) return;
+    const label = manualDialog.role === "sender" ? "người gửi" : "người nhận";
+    const error = validateManualContact(manualDialog.draft, label);
+    if (error) {
+      setManualDialog({ ...manualDialog, error });
+      return;
+    }
+    (manualDialog.role === "sender" ? setManualSender : setManualReceiver)(manualDialog.draft);
+    setManualDialog(null);
+  }
+
+  function cancelManualDialog(): void {
+    if (!manualDialog) return;
+    const { role, viaToggle } = manualDialog;
+    const current = role === "sender" ? manualSender : manualReceiver;
+    const label = role === "sender" ? "người gửi" : "người nhận";
+    // Vừa bấm "Nhập trực tiếp" rồi hủy, hoặc chưa có thông tin hợp lệ mà vẫn còn sổ địa chỉ: quay lại chọn từ sổ địa chỉ.
+    const hasAddressBook = (role === "sender" ? senderContacts : receiverContacts).length > 0;
+    if (hasAddressBook && (viaToggle || validateManualContact(current, label) !== null)) (role === "sender" ? setSenderSource : setReceiverSource)("addressBook");
+    setManualDialog(null);
+  }
 
   function update(field: keyof FormState, value: string): void {
     setForm((current) => ({ ...current, [field]: value }));
@@ -638,10 +706,7 @@ export function NewOrderPage(): React.JSX.Element {
                   <span className="text-[11px] font-medium text-dt-muted">Người gửi *</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (senderSource === "addressBook" && selectedSender) setManualSender(manualContactFromContact(selectedSender, senderAddress));
-                      setSenderSource((current) => current === "addressBook" ? "manual" : "addressBook");
-                    }}
+                    onClick={() => toggleManual("sender")}
                     className="text-[11px] text-dt-yellow hover:underline"
                     aria-pressed={senderSource === "manual"}
                   >
@@ -678,13 +743,7 @@ export function NewOrderPage(): React.JSX.Element {
                     ) : null}
                   </>
                 ) : (
-                  <ManualContactFields
-                    roleLabel="người gửi"
-                    addressLabel="Địa chỉ lấy hàng"
-                    value={manualSender}
-                    onChange={(field, value) => setManualSender((current) => ({ ...current, [field]: value }))}
-                    onMapChange={(location) => setManualSender((current) => ({ ...current, ...location }))}
-                  />
+                  <ManualContactSummary roleLabel="người gửi" value={manualSender} onEdit={() => openManualDialog("sender", manualSender)} />
                 )}
               </div>
 
@@ -693,10 +752,7 @@ export function NewOrderPage(): React.JSX.Element {
                   <span className="text-[11px] font-medium text-dt-muted">Người nhận *</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (receiverSource === "addressBook" && selectedReceiver) setManualReceiver(manualContactFromContact(selectedReceiver, receiverAddress));
-                      setReceiverSource((current) => current === "addressBook" ? "manual" : "addressBook");
-                    }}
+                    onClick={() => toggleManual("receiver")}
                     className="text-[11px] text-dt-yellow hover:underline"
                     aria-pressed={receiverSource === "manual"}
                   >
@@ -733,16 +789,33 @@ export function NewOrderPage(): React.JSX.Element {
                     ) : null}
                   </>
                 ) : (
-                  <ManualContactFields
-                    roleLabel="người nhận"
-                    addressLabel="Địa chỉ giao hàng"
-                    value={manualReceiver}
-                    onChange={(field, value) => setManualReceiver((current) => ({ ...current, [field]: value }))}
-                    onMapChange={(location) => setManualReceiver((current) => ({ ...current, ...location }))}
-                  />
+                  <ManualContactSummary roleLabel="người nhận" value={manualReceiver} onEdit={() => openManualDialog("receiver", manualReceiver)} />
                 )}
               </div>
             </div>
+
+            {manualDialog ? (
+              <Modal
+                title={manualDialog.role === "sender" ? "Nhập thông tin người gửi" : "Nhập thông tin người nhận"}
+                description={manualDialog.role === "sender" ? "Điền người gửi và địa chỉ lấy hàng, có thể ghim vị trí trên bản đồ." : "Điền người nhận và địa chỉ giao hàng, có thể ghim vị trí trên bản đồ."}
+                onClose={cancelManualDialog}
+                footer={(
+                  <>
+                    <Button variant="secondary" onClick={cancelManualDialog}>Hủy</Button>
+                    <Button onClick={saveManualDialog}>Xong</Button>
+                  </>
+                )}
+              >
+                <ManualContactFields
+                  roleLabel={manualDialog.role === "sender" ? "người gửi" : "người nhận"}
+                  addressLabel={manualDialog.role === "sender" ? "Địa chỉ lấy hàng" : "Địa chỉ giao hàng"}
+                  value={manualDialog.draft}
+                  onChange={(field, value) => setManualDialog((current) => current ? { ...current, error: null, draft: { ...current.draft, [field]: value } } : current)}
+                  onMapChange={(location) => setManualDialog((current) => current ? { ...current, draft: { ...current.draft, ...location } } : current)}
+                />
+                {manualDialog.error ? <p role="alert" className="mt-3 rounded-md border border-dt-red/40 bg-dt-red/10 px-3 py-2 text-[12px] text-red-200">{manualDialog.error}</p> : null}
+              </Modal>
+            ) : null}
 
             <label className="mt-4 flex items-start gap-2 text-[12px] text-dt-muted">
               <input
