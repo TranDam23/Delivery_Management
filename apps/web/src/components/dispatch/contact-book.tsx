@@ -160,7 +160,7 @@ function ContactRow({ contact, onChanged, onMessage }: { contact: Contact; onCha
               <TextField label="Số điện thoại" required inputMode="tel" value={addressForm.phone} onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value })} />
               <div className="sm:col-span-2"><AddressLocationFields value={addressForm} onChange={(location) => setAddressForm({ ...addressForm, ...location, ...EMPTY_PIN })} /></div>
               <TextField label="Số nhà, tên đường" required wrapperClassName="sm:col-span-2" value={addressForm.address_line} onChange={(event) => setAddressForm({ ...addressForm, address_line: event.target.value, ...EMPTY_PIN })} />
-              <div className="sm:col-span-2"><AddressMapPicker value={addressForm} onChange={(pin) => setAddressForm({ ...addressForm, ...pin })} /></div>
+              <div className="sm:col-span-2"><AddressMapPicker value={addressForm} onChange={(pin) => setAddressForm({ ...addressForm, ...pin })} address={{ line: addressForm.address_line, ward: addressForm.ward, district: addressForm.district, province: addressForm.province }} /></div>
               <p className="text-[11px] text-dt-muted sm:col-span-2">Sửa địa chỉ đã dùng trong đơn cũ sẽ đổi thông tin hiển thị của các đơn đó nhưng không tự lập lại tuyến; nên thêm địa chỉ mới thay vì sửa.</p>
               <div className="flex gap-2 sm:col-span-2">
                 <Button disabled={busy} onClick={() => void saveAddress()}>Lưu địa chỉ</Button>

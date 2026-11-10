@@ -269,7 +269,7 @@ function ManualContactFields({
           updateAddressField("ward", location.ward);
         }}
       />
-      <AddressMapPicker value={value} onChange={onMapChange} />
+      <AddressMapPicker value={value} onChange={onMapChange} address={{ line: value.addressLine, ward: value.ward, district: value.district, province: value.province }} />
       <p className="text-[10px] leading-4 text-dt-muted">Thông tin nhập trực tiếp sẽ được lưu vào sổ địa chỉ để dùng lại cho các đơn sau.</p>
     </div>
   );

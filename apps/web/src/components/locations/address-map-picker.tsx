@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { ExternalLink, MapPin } from "lucide-react";
+import { ExternalLink, MapPin, Search } from "lucide-react";
 import { LocationSource } from "@delivery/shared";
 import { TextField } from "@/components/ui/field";
-import { reverseGeocodeOsm } from "./osm-geocode";
+import { reverseGeocodeOsm, searchAddressOsm } from "./osm-geocode";
 
 // Leaflet dùng đối tượng window nên chỉ tải ở trình duyệt, và chỉ khi không dùng Google Maps.
 const OsmMap = dynamic(() => import("./osm-map"), {
@@ -21,9 +21,43 @@ export interface AddressMapValue {
   location_source: (typeof LocationSource)[keyof typeof LocationSource] | null;
 }
 
+/** Địa chỉ người dùng đã nhập ở các ô phía trên, dùng để tìm vị trí trên bản đồ. */
+export interface AddressMapQuery {
+  line?: string | null;
+  ward?: string | null;
+  district?: string | null;
+  province?: string | null;
+}
+
 interface AddressMapPickerProps {
   value: AddressMapValue;
   onChange: (value: AddressMapValue) => void;
+  address?: AddressMapQuery;
+}
+
+interface SearchEntry {
+  query: string;
+  /** Không có số nhà: chỉ tìm đối tượng khu vực (phường/xã, quận/huyện, tỉnh). */
+  coarse: boolean;
+  /** Lời nhắc hiển thị khi kết quả chỉ khớp ở cấp này; rỗng nếu khớp đầy đủ. */
+  note: string;
+}
+
+/** Các chuỗi tìm kiếm từ chi tiết đến tổng quát, bỏ qua phần còn trống và các chuỗi trùng nhau. */
+function buildSearchEntries(address: AddressMapQuery | undefined): SearchEntry[] {
+  const clean = (part: string | null | undefined): string => (part ?? "").trim();
+  const line = clean(address?.line);
+  const ward = clean(address?.ward);
+  const district = clean(address?.district);
+  const province = clean(address?.province);
+  const join = (...parts: string[]): string => parts.filter(Boolean).join(", ");
+  const candidates: SearchEntry[] = [
+    { query: join(line, ward, district, province), coarse: false, note: "Đã ghim theo địa chỉ đã nhập. Hãy kiểm tra và kéo ghim nếu chưa đúng." },
+    { query: join(ward, district, province), coarse: true, note: "Không tìm thấy số nhà, đã ghim theo phường/xã. Hãy kéo ghim đến đúng chỗ." },
+    { query: join(district, province), coarse: true, note: "Chỉ tìm được đến quận/huyện. Hãy kéo ghim đến đúng chỗ." },
+    { query: province, coarse: true, note: "Chỉ tìm được đến tỉnh/thành phố. Hãy bấm hoặc kéo ghim đến đúng chỗ." },
+  ];
+  return candidates.filter((entry, index) => entry.query && candidates.findIndex((other) => other.query === entry.query) === index);
 }
 
 interface GoogleLatLng {
@@ -109,7 +143,7 @@ function validCoordinate(value: string, min: number, max: number): number | null
 }
 
 /** Bộ ghim tọa độ Google Maps có fallback nhập tọa độ khi chưa cấu hình API key. */
-export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): React.JSX.Element {
+export function AddressMapPicker({ value, onChange, address }: AddressMapPickerProps): React.JSX.Element {
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GoogleMap | null>(null);
   const markerRef = useRef<GoogleMarker | null>(null);
@@ -121,12 +155,34 @@ export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): Re
   const [mapError, setMapError] = useState<string | null>(null);
   const [coordinateError, setCoordinateError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchNote, setSearchNote] = useState<string | null>(null);
   const [latitudeInput, setLatitudeInput] = useState(value.latitude?.toString() ?? "");
   const [longitudeInput, setLongitudeInput] = useState(value.longitude?.toString() ?? "");
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? "";
 
   onChangeRef.current = onChange;
   valueRef.current = value;
+  const addressRef = useRef(address);
+  addressRef.current = address;
+  const lastAddressKeyRef = useRef<string | null>(null);
+  const searchRef = useRef<() => Promise<void>>(async () => undefined);
+  const addressKey = JSON.stringify([address?.line ?? "", address?.ward ?? "", address?.district ?? "", address?.province ?? ""]);
+
+  // Tự tìm vị trí khi người dùng vừa nhập/đổi địa chỉ (đợi 1,2 giây sau lần gõ cuối); lần hiển thị đầu không tự tìm
+  // để không ghi đè ghim đã lưu của địa chỉ đang sửa.
+  useEffect(() => {
+    if (apiKey) return;
+    const previous = lastAddressKeyRef.current;
+    lastAddressKeyRef.current = addressKey;
+    if (previous === null || previous === addressKey) return;
+    const current = addressRef.current;
+    if (!current?.province || !current.ward || (current.line ?? "").trim().length < 3) return;
+    const timer = setTimeout(() => {
+      if (valueRef.current.latitude === null) void searchRef.current();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [addressKey, apiKey]);
 
   useEffect(() => {
     if (manualCoordinateEditRef.current) {
@@ -247,8 +303,31 @@ export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): Re
   // The map is initialized once per component. Pin movement is handled by Maps listeners.
   }, [apiKey]);
 
+  /** Tìm vị trí từ địa chỉ đã nhập ở các ô phía trên rồi ghim lên bản đồ. */
+  async function searchOnMap(): Promise<void> {
+    const entries = buildSearchEntries(address);
+    if (entries.length === 0) {
+      setSearchNote("Hãy chọn tỉnh/thành phố và nhập địa chỉ ở các ô phía trên trước.");
+      return;
+    }
+    setSearching(true);
+    setSearchNote(null);
+    const { result, error } = await searchAddressOsm(entries.map((entry) => ({ query: entry.query, coarse: entry.coarse })), address?.province ?? undefined);
+    setSearching(false);
+    if (!result) {
+      setSearchNote(error
+        ? `Không dùng được dịch vụ tìm địa chỉ: ${error}. Bạn vẫn bấm trực tiếp lên bản đồ để ghim.`
+        : "Không tìm thấy địa chỉ này trên bản đồ. Bạn có thể bấm trực tiếp lên bản đồ để ghim.");
+      return;
+    }
+    setSearchNote(entries[result.levelIndex]?.note ?? null);
+    selectOsmPoint(result.latitude, result.longitude, { formattedAddress: result.formattedAddress, placeId: result.placeId });
+  }
+
+  searchRef.current = searchOnMap;
+
   /** Chọn vị trí trên bản đồ OpenStreetMap: lưu tọa độ ngay, địa chỉ chữ (Nominatim) bổ sung sau nếu có. */
-  function selectOsmPoint(latitude: number, longitude: number): void {
+  function selectOsmPoint(latitude: number, longitude: number, preset?: { formattedAddress: string; placeId: string | null }): void {
     setCoordinateError(null);
     setLatitudeInput(latitude.toString());
     setLongitudeInput(longitude.toString());
@@ -259,6 +338,12 @@ export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): Re
       formatted_address: null,
       location_source: LocationSource.MAP_PIN,
     } satisfies AddressMapValue;
+    if (preset) {
+      // Kết quả từ tìm kiếm đã có địa chỉ chuẩn, không cần gọi thêm dịch vụ đổi tọa độ.
+      onChangeRef.current({ ...coordinates, place_id: preset.placeId, formatted_address: preset.formattedAddress });
+      return;
+    }
+    setSearchNote(null);
     onChangeRef.current(coordinates);
     void reverseGeocodeOsm(latitude, longitude).then((result) => {
       const current = valueRef.current;
@@ -309,7 +394,18 @@ export function AddressMapPicker({ value, onChange }: AddressMapPickerProps): Re
         </>
       ) : (
         <>
-          <OsmMap latitude={value.latitude} longitude={value.longitude} onSelect={selectOsmPoint} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void searchOnMap()}
+              disabled={searching}
+              className="inline-flex items-center gap-1.5 rounded-dt bg-dt-yellow px-3 py-2 text-[12px] font-medium text-[#0f0f12] transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Search size={13} /> {searching ? "Đang tìm..." : "Tìm vị trí theo địa chỉ đã nhập"}
+            </button>
+            {searchNote ? <span role="status" className="text-[10px] text-dt-muted">{searchNote}</span> : null}
+          </div>
+          <OsmMap latitude={value.latitude} longitude={value.longitude} onSelect={(lat, lng) => selectOsmPoint(lat, lng)} />
           <p className="text-[10px] text-dt-muted">
             Bản đồ OpenStreetMap: bấm vào bản đồ hoặc kéo ghim để chọn vị trí. Địa chỉ chữ được lấy từ Nominatim (có thể chưa chi tiết ở vùng nông thôn); tọa độ ghim vẫn chính xác. Sau khi chọn, kiểm tra lại xã/phường và tỉnh/thành phố ở danh sách phía trên.
           </p>

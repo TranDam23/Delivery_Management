@@ -45,7 +45,7 @@ function PartyFields({ title, value, onChange }: { title: string; value: Party; 
       <TextField label="Email" type="email" value={value.email} onChange={(event) => onChange({ ...value, email: event.target.value })} hint="Không bắt buộc" />
       <AddressLocationFields value={value} onChange={(location) => onChange({ ...value, ...location, ...EMPTY_PIN })} />
       <TextField label="Số nhà, tên đường" required value={value.addressLine} onChange={(event) => onChange({ ...value, addressLine: event.target.value, ...EMPTY_PIN })} />
-      <AddressMapPicker value={value} onChange={(pin) => onChange({ ...value, ...pin })} />
+      <AddressMapPicker value={value} onChange={(pin) => onChange({ ...value, ...pin })} address={{ line: value.addressLine, ward: value.ward, district: value.district, province: value.province }} />
     </Card>
   );
 }
