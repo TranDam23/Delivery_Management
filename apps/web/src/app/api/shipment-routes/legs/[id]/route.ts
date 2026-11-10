@@ -7,6 +7,7 @@ import { getUserOperationalScope, warehouseBelongsToScope } from "@/lib/dispatch
 import { checkLegAssignable } from "@/lib/shipment-leg-rules";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ExceptionType } from "@/lib/shipment-exceptions";
+import { checkShipperCanTake, friendlyCapacityError } from "@/lib/shipper-capacity";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -88,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const { data: staff, error: staffError } = await supabase
     .from("users")
-    .select("id, role_id, status, province, warehouse_id")
+    .select("id, full_name, role_id, status, province, warehouse_id")
     .eq("id", parsed.data.assigned_staff_id)
     .maybeSingle();
   if (staffError) return fail(staffError.message, 500);
@@ -107,6 +108,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return fail("Nhân viên giao hàng phải thuộc đúng kho vận hành của chặng", 400);
   }
 
+  // Shipper phải đúng loại (lấy hàng/giao hàng) và chưa đủ số đơn trong ngày.
+  const shipperCheck = await checkShipperCanTake(staff.id, staff.full_name, { leg_type: assignmentLeg.leg_type, assigned_staff_id: assignmentLeg.assigned_staff_id });
+  if (!shipperCheck.ok) return fail(shipperCheck.error, shipperCheck.status);
+
   const nextAttemptNo = assignmentLeg.status === ShipmentLegStatusCode.FAILED
     ? Math.max(1, Number(assignmentLeg.attempt_no ?? 1) + 1)
     : Math.max(1, Number(assignmentLeg.attempt_no ?? 1));
@@ -124,7 +129,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     .eq("id", id)
     .select("*")
     .single();
-  if (updateError) return fail(updateError.message, 500);
+  if (updateError) {
+    const friendly = friendlyCapacityError(updateError.message);
+    if (friendly) return fail(friendly, 409);
+    return fail(updateError.message, 500);
+  }
 
   // Đổi shipper của chặng đã có người phụ trách là một ngoại lệ vận chuyển: ghi lại để truy vết.
   if (previousStaffId && previousStaffId !== staff.id) {
@@ -201,5 +210,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  return ok(updatedLeg);
+  // Cho giao diện biết shipper còn nhận được thêm bao nhiêu đơn hôm nay.
+  const assignedNow = shipperCheck.capacity.assignedToday + (assignmentLeg.assigned_staff_id === staff.id ? 0 : 1);
+  return ok({
+    ...updatedLeg,
+    shipper_capacity: {
+      assigned: assignedNow,
+      limit: shipperCheck.capacity.dailyLimit,
+      reached: assignedNow >= shipperCheck.capacity.dailyLimit,
+      name: staff.full_name,
+    },
+  });
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AddressLocationFields } from "@/components/locations/address-location-fields";
+import { AddressMapPicker, type AddressMapValue } from "@/components/locations/address-map-picker";
 import { ItemTypeField } from "@/components/orders/item-type-field";
 import { DIMENSIONS_REQUIRED_MESSAGE, dimensionsRequired, WEIGHT_REQUIRED_MESSAGE } from "@/lib/item-types";
 import { SelectField, TextField } from "@/components/ui/field";
@@ -11,8 +12,9 @@ import { ShippingPaymentFields } from "@/components/payments/shipping-payment-fi
 import { describeQuote, useShippingQuote } from "@/lib/use-shipping-quote";
 import type { ShippingFeePayer, ShippingPaymentMethod } from "@/lib/shipping-payment";
 
-type Address = { name: string; phone: string; addressLine: string; province: string; district: string; ward: string; email?: string };
-const EMPTY_ADDRESS: Address = { name: "", phone: "", addressLine: "", province: "", district: "", ward: "" };
+type Address = AddressMapValue & { name: string; phone: string; addressLine: string; province: string; district: string; ward: string; email?: string };
+const EMPTY_PIN: AddressMapValue = { latitude: null, longitude: null, place_id: null, formatted_address: null, location_source: null };
+const EMPTY_ADDRESS: Address = { name: "", phone: "", addressLine: "", province: "", district: "", ward: "", ...EMPTY_PIN };
 
 function AddressSection({ title, value, onChange, recipient = false }: { title: string; value: Address; onChange: (value: Address) => void; recipient?: boolean }): React.JSX.Element {
   return <section className="space-y-4 rounded-dt border border-dt-border bg-dt-panel p-5">
@@ -22,8 +24,12 @@ function AddressSection({ title, value, onChange, recipient = false }: { title: 
       <TextField label="Số điện thoại" required type="tel" inputMode="numeric" value={value.phone} onChange={(event) => onChange({ ...value, phone: event.target.value })} />
     </div>
     {recipient ? <TextField label="Email người nhận" type="email" required value={value.email ?? ""} onChange={(event) => onChange({ ...value, email: event.target.value })} hint="Người nhận dùng email này để xác thực và gửi đánh giá hoặc phản ánh sau giao hàng." /> : null}
-    <AddressLocationFields value={value} onChange={(location) => onChange({ ...value, ...location })} />
+    <AddressLocationFields value={value} onChange={(location) => {
+      const changed = location.province !== value.province || location.district !== value.district || location.ward !== value.ward;
+      onChange({ ...value, ...location, ...(changed ? EMPTY_PIN : {}) });
+    }} />
     <TextField label="Số nhà, tên đường" required value={value.addressLine} onChange={(event) => onChange({ ...value, addressLine: event.target.value })} />
+    <AddressMapPicker value={value} onChange={(pin) => onChange({ ...value, ...pin })} address={{ line: value.addressLine, ward: value.ward, district: value.district, province: value.province }} />
   </section>;
 }
 
