@@ -24,6 +24,7 @@
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.1",
+    "chai": "^4.5.0",
     "dotenv": "^16.4.7",
     "ethers": "^6.17.0",
     "hardhat": "^2.22.17",

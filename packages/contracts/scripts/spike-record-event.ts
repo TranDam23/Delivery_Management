@@ -86,11 +86,13 @@ async function main() {
     eventTime: new Date().toISOString(),
   };
   const eventDataHash = hashPayload(payload);
+  const eventId = ethers.id(`delivertrust-spike:${trackingCode}`);
 
   console.log("\n--- 1. GHI SU KIEN ---");
   console.log("Tracking code  :", trackingCode);
   console.log("Event type     : ORDER_CREATED");
   console.log("Hash payload   :", eventDataHash);
+  console.log("Event ID       :", eventId);
 
   const sentAt = Date.now();
   const tx = await contract.recordEvent(
@@ -98,6 +100,7 @@ async function main() {
     "ORDER_CREATED",
     operator.address,
     eventDataHash,
+    eventId,
   );
   const submittedMs = Date.now() - sentAt;
   console.log("Tx hash        :", tx.hash);
@@ -124,8 +127,10 @@ async function main() {
 
   const onChain = events[0];
   if (!onChain) throw new Error("Doc lai tu chain khong thay su kien nao");
+  if (onChain.eventId !== eventId) throw new Error("Event ID doc lai khong khop");
   console.log("trackingCode   :", onChain.trackingCode);
   console.log("eventType      :", onChain.eventType);
+  console.log("eventId        :", onChain.eventId);
   console.log("performedBy    :", onChain.performedBy);
   console.log("eventDataHash  :", onChain.eventDataHash);
   console.log(
