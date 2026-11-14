@@ -153,12 +153,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (confirmation.status === "already_confirmed") {
       const { data: existingEvent, error: eventError } = await supabase
         .from("blockchain_events")
-        .select("id, event_data_hash, event_payload, performed_by, tx_status")
+        .select("id, event_data_hash, event_payload, performed_by, tx_status, transaction_hash")
         .eq("id", confirmation.event_id)
         .maybeSingle();
       if (eventError) {
         warning = "Đã xác nhận nhận hàng nhưng không kiểm tra được trạng thái Blockchain event.";
-      } else if (existingEvent?.tx_status === "failed") {
+      } else if (existingEvent?.tx_status === "failed" && existingEvent.transaction_hash === null) {
         const parsedEvent = blockchainEventSchema.safeParse(existingEvent);
         const payload = parsedEvent.success ? parsedEvent.data.event_payload : null;
         const verifiedPayload = payload ? hashEventPayload(payload) : null;
@@ -184,6 +184,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             .update({ tx_status: "pending" })
             .eq("id", parsedEvent.data.id)
             .eq("tx_status", "failed")
+            .is("transaction_hash", null)
             .select("id")
             .maybeSingle();
           if (claimError) {

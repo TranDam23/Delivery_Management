@@ -4,9 +4,11 @@ import type { Json } from "@delivery/database";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import {
   actorAddressForUser,
+  BlockchainTransactionHashPersistenceError,
   BlockchainTransactionOutcomeUnknownError,
   BlockchainTransactionRevertedError,
   hashEventPayload,
+  onChainEventIdFromDatabaseUuid,
   recordDeliveryEventOnChain,
 } from "./record-event";
 
@@ -53,13 +55,50 @@ export async function dispatchBlockchainEvent(
   const job = async (): Promise<void> => {
     try {
       const client = getSupabaseServiceClient();
+      const performedByAddress = actorAddressForUser(params.performedBy);
+      onChainEventIdFromDatabaseUuid(params.eventId);
+      const { data: claimedRow, error: claimError } = await client
+        .from("blockchain_events")
+        .update({ tx_status: BlockchainTransactionStatus.SUBMITTING })
+        .eq("id", params.eventId)
+        .eq("tx_status", BlockchainTransactionStatus.PENDING)
+        .is("transaction_hash", null)
+        .select("id")
+        .maybeSingle();
+      if (claimError) {
+        console.error("Claiming Blockchain event before submission failed", {
+          eventId: params.eventId,
+          claimError,
+        });
+        return;
+      }
+      if (!claimedRow) {
+        console.error("Blockchain event was not claimable before submission", { eventId: params.eventId });
+        return;
+      }
+
       const result = await recordDeliveryEventOnChain({
+        dbEventId: params.eventId,
         trackingCode: params.trackingCode,
         eventType: params.eventType,
-        performedByAddress: actorAddressForUser(params.performedBy),
+        performedByAddress,
         eventDataHash: params.eventDataHash,
+        onSubmitted: async (txHash) => {
+          const { data: updatedRow, error } = await client
+            .from("blockchain_events")
+            .update({ transaction_hash: txHash })
+            .eq("id", params.eventId)
+            .eq("tx_status", BlockchainTransactionStatus.SUBMITTING)
+            .is("transaction_hash", null)
+            .select("id")
+            .maybeSingle();
+          if (error) throw error;
+          if (!updatedRow) {
+            throw new Error("No blockchain event row matched submitted transaction");
+          }
+        },
       });
-      const { error } = await client
+      const { data: confirmedRow, error: confirmedError } = await client
         .from("blockchain_events")
         .update({
           tx_status: BlockchainTransactionStatus.CONFIRMED,
@@ -67,25 +106,51 @@ export async function dispatchBlockchainEvent(
           block_number: result.blockNumber,
           chain_timestamp: result.chainTimestamp,
         })
-        .eq("id", params.eventId);
-      if (error) console.error("Updating confirmed blockchain event failed", { eventId: params.eventId, error });
+        .eq("id", params.eventId)
+        .eq("tx_status", BlockchainTransactionStatus.SUBMITTING)
+        .select("id")
+        .maybeSingle();
+      if (confirmedError || !confirmedRow) {
+        console.error("Updating Blockchain event to confirmed failed", {
+          eventId: params.eventId,
+          status: BlockchainTransactionStatus.CONFIRMED,
+          reason: confirmedError ?? "No submitting row matched the update",
+        });
+      }
     } catch (chainError) {
       console.error("recordDeliveryEventOnChain failed", { eventId: params.eventId, chainError });
+      if (chainError instanceof BlockchainTransactionHashPersistenceError) {
+        console.error("Transaction hash persistence failed after submission; leaving blockchain event submitting", {
+          dbEventId: params.eventId,
+          transactionHash: chainError.transactionHash,
+          chainError,
+        });
+        return;
+      }
       if (chainError instanceof BlockchainTransactionOutcomeUnknownError) {
-        console.error("Leaving blockchain event pending until its outcome can be reconciled", { eventId: params.eventId });
+        console.error("Leaving blockchain event submitting until its outcome can be reconciled", { eventId: params.eventId });
         return;
       }
       if (!(chainError instanceof BlockchainTransactionRevertedError)) {
-        console.error("Leaving blockchain event pending because dispatch failed before a definite outcome", { eventId: params.eventId });
+        console.error("Leaving blockchain event submitting because dispatch failed before a definite outcome", { eventId: params.eventId });
         return;
       }
 
       const client = getSupabaseServiceClient();
-      const { error } = await client
+      const { data: failedRow, error: failedError } = await client
         .from("blockchain_events")
         .update({ tx_status: BlockchainTransactionStatus.FAILED })
-        .eq("id", params.eventId);
-      if (error) console.error("Marking blockchain event failed", { eventId: params.eventId, error });
+        .eq("id", params.eventId)
+        .eq("tx_status", BlockchainTransactionStatus.SUBMITTING)
+        .select("id")
+        .maybeSingle();
+      if (failedError || !failedRow) {
+        console.error("Updating Blockchain event to failed did not update a row", {
+          eventId: params.eventId,
+          status: BlockchainTransactionStatus.FAILED,
+          reason: failedError ?? "No submitting row matched the update",
+        });
+      }
     }
   };
 

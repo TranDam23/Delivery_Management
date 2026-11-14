@@ -11,6 +11,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 ///         chieu/xac minh, phuc vu tra cuu minh bach va xu ly tranh chap.
 contract DeliveryTracking is Ownable {
     struct DeliveryEvent {
+        bytes32 eventId; // Dinh danh duy nhat cua su kien do backend cap
         string trackingCode; // Ma don hang (tracking_code trong DB)
         string eventType; // vd: ORDER_CREATED, PICKED_UP, IN_WAREHOUSE, IN_TRANSIT, DELIVERED, RETURNED, CANCELLED
         address performedBy; // Vi cua he thong/nhan vien thuc hien thao tac
@@ -21,12 +22,16 @@ contract DeliveryTracking is Ownable {
     /// @dev Danh sach tuan tu cac su kien theo tracking code, dung lam so cai bat bien.
     mapping(string => DeliveryEvent[]) private _eventsByTrackingCode;
 
+    /// @dev Danh dau event ID da duoc ghi de ngan ghi trung khi retry.
+    mapping(bytes32 => bool) public isEventRecorded;
+
     /// @dev Vi duoc phep ghi su kien len chain (backend service wallet, co the co nhieu).
     mapping(address => bool) public isOperator;
 
     event OperatorUpdated(address indexed operator, bool allowed);
 
     event DeliveryEventRecorded(
+        bytes32 indexed eventId,
         string indexed trackingCodeIndexed,
         string trackingCode,
         string eventType,
@@ -38,6 +43,12 @@ contract DeliveryTracking is Ownable {
 
     error NotOperator(address caller);
     error EmptyTrackingCode();
+    error TrackingCodeTooLong(uint256 length);
+    error EmptyEventType();
+    error EventTypeTooLong(uint256 length);
+    error EmptyEventDataHash();
+    error EmptyEventId();
+    error EventAlreadyRecorded(bytes32 eventId);
 
     modifier onlyOperator() {
         if (!isOperator[msg.sender] && msg.sender != owner()) {
@@ -62,15 +73,26 @@ contract DeliveryTracking is Ownable {
     /// @param eventType Loai su kien (ORDER_CREATED, PICKED_UP, DELIVERED, ...).
     /// @param performedBy Dia chi vi dai dien nguoi/thiet bi thuc hien (co the la vi cua nhan vien giao hang).
     /// @param eventDataHash keccak256 cua payload chi tiet (order_id, status, note, image_url, ...) luu o DB.
+    /// @param eventId Dinh danh duy nhat cua su kien, dung de chong ghi trung khi retry.
     function recordEvent(
         string calldata trackingCode,
         string calldata eventType,
         address performedBy,
-        bytes32 eventDataHash
+        bytes32 eventDataHash,
+        bytes32 eventId
     ) external onlyOperator returns (uint256 eventIndex) {
         if (bytes(trackingCode).length == 0) revert EmptyTrackingCode();
+        if (bytes(trackingCode).length > 64) revert TrackingCodeTooLong(bytes(trackingCode).length);
+        if (bytes(eventType).length == 0) revert EmptyEventType();
+        if (bytes(eventType).length > 64) revert EventTypeTooLong(bytes(eventType).length);
+        if (eventDataHash == bytes32(0)) revert EmptyEventDataHash();
+        if (eventId == bytes32(0)) revert EmptyEventId();
+        if (isEventRecorded[eventId]) revert EventAlreadyRecorded(eventId);
+
+        isEventRecorded[eventId] = true;
 
         DeliveryEvent memory newEvent = DeliveryEvent({
+            eventId: eventId,
             trackingCode: trackingCode,
             eventType: eventType,
             performedBy: performedBy,
@@ -82,6 +104,7 @@ contract DeliveryTracking is Ownable {
         eventIndex = _eventsByTrackingCode[trackingCode].length - 1;
 
         emit DeliveryEventRecorded(
+            eventId,
             trackingCode,
             trackingCode,
             eventType,
