@@ -1,13 +1,28 @@
-import { dataSlice, getAddress, keccak256, toUtf8Bytes } from "ethers";
+import { dataSlice, getAddress, isError, keccak256, toUtf8Bytes, zeroPadValue } from "ethers";
 import type { BlockchainEventType } from "@delivery/shared";
 import { getBlockchainOperatorContract } from "./provider";
 
 export interface RecordDeliveryEventParams {
+  /** UUID cua ban ghi blockchain_events.id trong Database. */
+  dbEventId: string;
   trackingCode: string;
   eventType: BlockchainEventType;
   performedByAddress: string;
   /** keccak256 của payload đã chuẩn hóa, xem hashEventPayload. */
   eventDataHash: string;
+  onSubmitted?: (txHash: string) => Promise<void>;
+}
+
+const DATABASE_EVENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Chuyen UUID Database thanh bytes32 deterministic de retry dung cung event ID. */
+export function onChainEventIdFromDatabaseUuid(dbEventId: string): string {
+  if (!DATABASE_EVENT_ID_PATTERN.test(dbEventId)) {
+    throw new TypeError("dbEventId must be a canonical UUID");
+  }
+
+  return zeroPadValue(`0x${dbEventId.replace(/-/g, "")}`, 32);
 }
 
 export interface RecordDeliveryEventResult {
@@ -21,6 +36,16 @@ export class BlockchainTransactionOutcomeUnknownError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "BlockchainTransactionOutcomeUnknownError";
+  }
+}
+
+export class BlockchainTransactionHashPersistenceError extends Error {
+  readonly transactionHash: string;
+
+  constructor(transactionHash: string, options?: ErrorOptions) {
+    super("Blockchain transaction was submitted but its hash could not be persisted", options);
+    this.name = "BlockchainTransactionHashPersistenceError";
+    this.transactionHash = transactionHash;
   }
 }
 
@@ -73,6 +98,7 @@ export async function recordDeliveryEventOnChain(
   params: RecordDeliveryEventParams,
 ): Promise<RecordDeliveryEventResult> {
   const contract = getBlockchainOperatorContract();
+  const onChainEventId = onChainEventIdFromDatabaseUuid(params.dbEventId);
 
   let tx: Awaited<ReturnType<typeof contract.recordEvent>>;
   try {
@@ -81,6 +107,7 @@ export async function recordDeliveryEventOnChain(
       params.eventType,
       params.performedByAddress,
       params.eventDataHash,
+      onChainEventId,
     );
   } catch (error) {
     throw new BlockchainTransactionOutcomeUnknownError(
@@ -89,10 +116,80 @@ export async function recordDeliveryEventOnChain(
     );
   }
 
+  try {
+    await params.onSubmitted?.(tx.hash);
+  } catch (error) {
+    throw new BlockchainTransactionHashPersistenceError(tx.hash, { cause: error });
+  }
+
   let receipt: Awaited<ReturnType<typeof tx.wait>>;
   try {
     receipt = await tx.wait();
   } catch (error) {
+    if (isError(error, "TRANSACTION_REPLACED")) {
+      const replacementReceipt = error.receipt;
+      if (
+        error.reason !== "repriced"
+        || error.cancelled
+        || !replacementReceipt
+        || replacementReceipt.status !== 1
+        || typeof replacementReceipt.hash !== "string"
+        || typeof replacementReceipt.blockNumber !== "number"
+        || typeof replacementReceipt.getBlock !== "function"
+      ) {
+        throw new BlockchainTransactionOutcomeUnknownError(
+          "Blockchain transaction replacement outcome is unknown",
+          { cause: error },
+        );
+      }
+
+      let replacementBlock: Awaited<ReturnType<typeof replacementReceipt.getBlock>>;
+      try {
+        replacementBlock = await replacementReceipt.getBlock();
+      } catch (blockError) {
+        throw new BlockchainTransactionOutcomeUnknownError(
+          "Blockchain replacement succeeded but its block could not be loaded",
+          { cause: blockError },
+        );
+      }
+
+      if (!replacementBlock) {
+        throw new BlockchainTransactionOutcomeUnknownError(
+          "Blockchain replacement succeeded but its block timestamp is unavailable",
+          { cause: error },
+        );
+      }
+
+      const timestamp = replacementBlock.timestamp;
+      if (
+        typeof timestamp !== "number"
+        || !Number.isFinite(timestamp)
+        || timestamp < 0
+      ) {
+        throw new BlockchainTransactionOutcomeUnknownError(
+          "Blockchain replacement returned an invalid block timestamp",
+          { cause: error },
+        );
+      }
+
+      let chainTimestamp: string;
+      try {
+        chainTimestamp = new Date(timestamp * 1000).toISOString();
+      } catch (dateError) {
+        throw new BlockchainTransactionOutcomeUnknownError(
+          "Blockchain replacement returned a timestamp outside the valid date range",
+          { cause: dateError },
+        );
+      }
+
+      return {
+        eventDataHash: params.eventDataHash,
+        transactionHash: replacementReceipt.hash,
+        blockNumber: replacementReceipt.blockNumber,
+        chainTimestamp,
+      };
+    }
+
     const failedReceipt = typeof error === "object" && error !== null && "receipt" in error
       ? error.receipt
       : null;

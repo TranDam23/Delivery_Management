@@ -2,6 +2,7 @@ import { Contract, JsonRpcProvider, Wallet, type BaseContract, type ContractTran
 import DeliveryTrackingAbi from "./DeliveryTracking.abi.json";
 
 export interface OnChainDeliveryEventStruct {
+  eventId: string;
   trackingCode: string;
   eventType: string;
   performedBy: string;
@@ -16,10 +17,12 @@ export interface DeliveryTrackingContract extends BaseContract {
     eventType: string,
     performedBy: string,
     eventDataHash: string,
+    eventId: string,
   ): Promise<ContractTransactionResponse>;
   getEvents(trackingCode: string): Promise<OnChainDeliveryEventStruct[]>;
   getEventCount(trackingCode: string): Promise<bigint>;
   getLatestEvent(trackingCode: string): Promise<OnChainDeliveryEventStruct>;
+  isEventRecorded(eventId: string): Promise<boolean>;
   setOperator(operator: string, allowed: boolean): Promise<ContractTransactionResponse>;
 }
 
