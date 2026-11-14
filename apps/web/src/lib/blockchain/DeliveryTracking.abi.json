@@ -11,7 +11,8 @@
       { "name": "trackingCode", "type": "string" },
       { "name": "eventType", "type": "string" },
       { "name": "performedBy", "type": "address" },
-      { "name": "eventDataHash", "type": "bytes32" }
+      { "name": "eventDataHash", "type": "bytes32" },
+      { "name": "eventId", "type": "bytes32" }
     ],
     "outputs": [{ "name": "eventIndex", "type": "uint256" }],
     "stateMutability": "nonpayable"
@@ -25,6 +26,7 @@
         "name": "",
         "type": "tuple[]",
         "components": [
+          { "name": "eventId", "type": "bytes32" },
           { "name": "trackingCode", "type": "string" },
           { "name": "eventType", "type": "string" },
           { "name": "performedBy", "type": "address" },
@@ -51,6 +53,7 @@
         "name": "",
         "type": "tuple",
         "components": [
+          { "name": "eventId", "type": "bytes32" },
           { "name": "trackingCode", "type": "string" },
           { "name": "eventType", "type": "string" },
           { "name": "performedBy", "type": "address" },
@@ -59,6 +62,13 @@
         ]
       }
     ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isEventRecorded",
+    "inputs": [{ "name": "", "type": "bytes32" }],
+    "outputs": [{ "name": "", "type": "bool" }],
     "stateMutability": "view"
   },
   {
@@ -75,6 +85,7 @@
     "type": "event",
     "name": "DeliveryEventRecorded",
     "inputs": [
+      { "name": "eventId", "type": "bytes32", "indexed": true },
       { "name": "trackingCodeIndexed", "type": "string", "indexed": true },
       { "name": "trackingCode", "type": "string", "indexed": false },
       { "name": "eventType", "type": "string", "indexed": false },
@@ -84,5 +95,45 @@
       { "name": "eventIndex", "type": "uint256", "indexed": false }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "NotOperator",
+    "inputs": [{ "name": "caller", "type": "address" }]
+  },
+  {
+    "type": "error",
+    "name": "EmptyTrackingCode",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TrackingCodeTooLong",
+    "inputs": [{ "name": "length", "type": "uint256" }]
+  },
+  {
+    "type": "error",
+    "name": "EmptyEventType",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "EventTypeTooLong",
+    "inputs": [{ "name": "length", "type": "uint256" }]
+  },
+  {
+    "type": "error",
+    "name": "EmptyEventDataHash",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "EmptyEventId",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "EventAlreadyRecorded",
+    "inputs": [{ "name": "eventId", "type": "bytes32" }]
   }
 ]
