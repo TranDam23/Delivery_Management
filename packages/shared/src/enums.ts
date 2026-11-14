@@ -106,6 +106,7 @@ export type CodTransactionStatus = (typeof CodTransactionStatus)[keyof typeof Co
 /** Trạng thái giao dịch ghi Blockchain bất đồng bộ trong DB. */
 export const BlockchainTransactionStatus = {
   PENDING: "pending",
+  SUBMITTING: "submitting",
   CONFIRMED: "confirmed",
   FAILED: "failed",
 } as const;
