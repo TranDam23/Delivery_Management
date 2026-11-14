@@ -17,9 +17,10 @@ describe("DeliveryTracking", () => {
   it("cho phep owner ghi su kien va tu dong la operator", async () => {
     const { contract, owner } = await deployFixture();
     const hash = ethers.keccak256(ethers.toUtf8Bytes("order-created-payload"));
+    const eventId = ethers.id("delivery-event-1");
 
     await expect(
-      contract.recordEvent("DH00001", "ORDER_CREATED", owner.address, hash),
+      contract.recordEvent("DH00001", "ORDER_CREATED", owner.address, hash, eventId),
     ).to.emit(contract, "DeliveryEventRecorded");
 
     expect(await contract.getEventCount("DH00001")).to.equal(1n);
@@ -28,9 +29,10 @@ describe("DeliveryTracking", () => {
   it("tu choi ghi su kien tu vi khong phai operator", async () => {
     const { contract, stranger, owner } = await deployFixture();
     const hash = ethers.keccak256(ethers.toUtf8Bytes("payload"));
+    const eventId = ethers.id("delivery-event-2");
 
     await expect(
-      contract.connect(stranger).recordEvent("DH00002", "ORDER_CREATED", owner.address, hash),
+      contract.connect(stranger).recordEvent("DH00002", "ORDER_CREATED", owner.address, hash, eventId),
     ).to.be.revertedWithCustomError(contract, "NotOperator");
   });
 
@@ -39,8 +41,9 @@ describe("DeliveryTracking", () => {
     await contract.connect(owner).setOperator(operator.address, true);
 
     const hash = ethers.keccak256(ethers.toUtf8Bytes("payload"));
+    const eventId = ethers.id("delivery-event-3");
     await expect(
-      contract.connect(operator).recordEvent("DH00003", "PICKED_UP", operator.address, hash),
+      contract.connect(operator).recordEvent("DH00003", "PICKED_UP", operator.address, hash, eventId),
     ).to.emit(contract, "DeliveryEventRecorded");
   });
 
@@ -48,14 +51,31 @@ describe("DeliveryTracking", () => {
     const { contract, owner } = await deployFixture();
     const hash1 = ethers.keccak256(ethers.toUtf8Bytes("1"));
     const hash2 = ethers.keccak256(ethers.toUtf8Bytes("2"));
+    const eventId1 = ethers.id("delivery-event-4");
+    const eventId2 = ethers.id("delivery-event-5");
 
-    await contract.recordEvent("DH00004", "ORDER_CREATED", owner.address, hash1);
-    await contract.recordEvent("DH00004", "PICKED_UP", owner.address, hash2);
+    await contract.recordEvent("DH00004", "ORDER_CREATED", owner.address, hash1, eventId1);
+    await contract.recordEvent("DH00004", "PICKED_UP", owner.address, hash2, eventId2);
 
     const events = await contract.getEvents("DH00004");
     expect(events.length).to.equal(2);
 
     const latest = await contract.getLatestEvent("DH00004");
     expect(latest.eventType).to.equal("PICKED_UP");
+    expect(latest.eventId).to.equal(eventId2);
+  });
+
+  it("tu choi ghi trung eventId", async () => {
+    const { contract, owner } = await deployFixture();
+    const hash = ethers.keccak256(ethers.toUtf8Bytes("payload"));
+    const eventId = ethers.id("delivery-event-duplicate");
+
+    await contract.recordEvent("DH00005", "ORDER_CREATED", owner.address, hash, eventId);
+
+    await expect(
+      contract.recordEvent("DH00005", "ORDER_CREATED", owner.address, hash, eventId),
+    )
+      .to.be.revertedWithCustomError(contract, "EventAlreadyRecorded")
+      .withArgs(eventId);
   });
 });
